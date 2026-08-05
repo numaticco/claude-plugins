@@ -1,0 +1,20 @@
+{
+  "name": "numatic",
+  "description": "Numatic Ventures engineering plugins for Claude Code",
+  "owner": {
+    "name": "Numatic Ventures",
+    "email": "tools@numatic.co"
+  },
+  "plugins": [
+    {
+      "name": "numatic",
+      "source": "./plugins/numatic",
+      "description": "Adversarial spec and plan review, reuse auditing, simplification, and end-to-end flow tracing layered onto the Superpowers workflow",
+      "version": "0.1.0",
+      "author": {
+        "name": "Igor Sadovskiy",
+        "email": "tools@numatic.co"
+      }
+    }
+  ]
+}
