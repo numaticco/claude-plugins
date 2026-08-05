@@ -140,6 +140,11 @@ Report in chat:
 - Anything escalated to the human.
 
 Do not write a separate review artifact. The spec itself is the artifact, and the edits
-are the record. The exception is the scenario list: carry it forward so
-`numatic:reviewing-plans` and `numatic:tracing-flows` verify the same scenarios rather
-than re-deriving a different set.
+are the record.
+
+The one thing that must outlive this step is the **scenario list**. Write it into the spec
+under a `## Scenarios` heading, as a numbered list, before handing off. Do not rely on
+carrying it in the conversation: `numatic:reviewing-plans` runs after planning and
+`numatic:tracing-flows` runs hours later, past compaction, and both are supposed to verify
+*these* scenarios rather than derive a fresh set of their own. In the spec they survive;
+in chat they do not.
