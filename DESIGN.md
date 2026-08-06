@@ -6,6 +6,12 @@ was measured rather than assumed, and where it is coupled to things outside our 
 Read this before changing the hook or the review loops. Several parts that look like they
 could be simplified are load-bearing, and the reasons are not visible from the code.
 
+House rule since 0.3.4: **skills and agents carry the contract; this file carries the
+rationale.** Each contract lives in exactly one place - the agent file for review contracts,
+the SKILL.md for orchestration - and other files point at it rather than restating it. When
+a fix needs a why longer than a sentence or two, the why lands here. The 0.3.2 N/A change
+had to be patched into three files in lockstep; that sync cost is what this rule removes.
+
 Status: built and validated. Verified against Superpowers 6.2.0.
 
 ---

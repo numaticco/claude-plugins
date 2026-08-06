@@ -126,24 +126,11 @@ spec that has already survived an adversarial read.
 
 ## What the reviewer checks
 
-The full contract is in `agents/spec-reviewer.md`. Four lenses, in priority order. The
-scenario taxonomy lives in `${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md`.
-
-**1. Scenario coverage.** Walk the taxonomy. For each class, does the spec state what
-should happen, or is it silent? Explicitly out of scope is a pass. Silence is a finding.
-A class the change gives no site to manifest at - no new code path, writer, I/O or actor -
-is marked N/A, but only with that property named and verified against the repo.
-
-**2. Ambiguity.** Any requirement two competent engineers would implement differently.
-The test is not "is this unclear" but "could this be read two ways" - a sentence can be
-perfectly clear and still be ambiguous between two clear readings.
-
-**3. Decomposition.** Is this one plan's worth of work? Are the units separable, with
-interfaces stated rather than implied? A spec that describes three subsystems needs to
-say how they meet.
-
-**4. Testability.** For each requirement, could you write a test that fails when it is
-violated? "Fast", "robust", and "user-friendly" are not testable. What would make them so?
+The contract lives in `agents/spec-reviewer.md` and only there - restating it here is how
+the two copies drift. In one line each: scenario coverage against the taxonomy at
+`${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md` (the primary lens, with a gated N/A
+verdict for classes the change gives no site to manifest at), ambiguity, decomposition,
+testability, and unstated assumptions about the existing system.
 
 ## Red flags
 
@@ -193,8 +180,6 @@ considered, and re-raises it. This is the same durability failure the plan's
 `## Open decisions` section exists to prevent.
 
 **Where it goes:** append it at the end, after the spec's last existing section. The heading
-is literally `## Scenarios` - five places downstream locate the list by that exact string, so
-it carries no section number even in a spec whose other headings are numbered. Appending is
-what keeps those two facts compatible: at the end, an unnumbered heading reads as a closing
-appendix; wedged mid-document it breaks the spec's own numbering and forward-references
-sections the reader has not reached yet.
+is literally `## Scenarios`, with no section number even in a spec whose other headings are
+numbered - downstream consumers locate the list by that exact string, and at the end an
+unnumbered heading reads as a closing appendix instead of breaking the spec's numbering.

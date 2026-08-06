@@ -25,9 +25,10 @@ Agent(numatic:plan-reviewer):
     Read: [SPEC_FILE]
 
     ## Scenario List
-    [The numbered list from the spec's `## Scenarios` section, pasted in full.
-     If the spec has no `## Scenarios` section, say so here and add:
-     "Derive scenarios from [TAXONOMY_FILE]."]
+    [One of two lines. Normally: "Use the numbered list under the spec's `## Scenarios`
+     heading." - the reviewer reads the spec anyway, and a pasted copy is a second source
+     of truth that can go stale. If the spec has no `## Scenarios` section:
+     "The spec has no `## Scenarios` section. Derive scenarios from [TAXONOMY_FILE]."]
 
     ## Project Context
     [What this codebase is, which subsystem the plan touches, and any conventions a

@@ -195,17 +195,11 @@ spec.** Findings discovered past a break are tagged `contingent on #N`.
 > tracing the rest of your unit to the very end. Return ALL findings. Mark any finding that
 > depends on an earlier one as `contingent on #N`.
 
-**Red flags - stop, you are about to under-report:**
-
-- "This break blocks the rest, so I'll report it and wait for a fix" -> No. Assume the fix, keep going.
-- "The flow can't proceed past here" -> It can *on paper*. Trace under assumed-repair.
-- "I found the bug, my job is done" -> Your job is ALL gaps, not the first one.
-- "Reporting one clear blocker is cleaner" -> One blocker hides five. Report all five.
-
 | Rationalization | Reality |
 |---|---|
 | "First failure blocks everything downstream" | Assume it is fixed to spec and trace on. Downstream gaps are real work you would otherwise miss. |
 | "I can't know downstream state past the break" | You can reason about it under the spec. Tag it `contingent on #N` and report it. |
+| "I found the bug, my job is done" | Your job is ALL gaps, not the first one. |
 | "User will re-run after fixing this" | That is the slow N-cycle loop this skill removes. One pass = whole tree. |
 | "Stopping early is safer, less noise" | Under-reporting is the failure mode. Completeness with contingency tags beats a truncated report. |
 
@@ -322,26 +316,13 @@ real timing is named here, not claimed as verified.
 
 ## Who fixes these findings
 
-This skill owns its fix wave (Phase E). Deferring the fixes to the final whole-branch review
-was tried and is wrong, for four reasons that compound:
-
-1. **The handoff is voluntary.** The final reviewer's prompt hands it a git range and
-   diff-shaped checks. Asking it to also adopt an external flow-scoped findings file fights
-   its own template, and nothing reconciles what was handed over against what comes back. A
-   dropped finding just disappears.
-2. **The fixer loses the map.** Superpowers dispatches one fixer with the reviewer's
-   findings list. That fixer never sees the flow map, so it fixes "the security rule does
-   not know about field X" from one side of a seam.
-3. **The verification is structurally blind.** The scoped re-review reads the fix range
-   diff. A seam fix cannot be verified by reading one side of the seam, and a diff is one
-   side by definition. Only a re-trace can verify it.
-4. **The invariant it protected was already gone.** "One gate owns all mutations" sounds
-   right, but `numatic:simplifying-code` already mutates before the final review and the
-   review covers it. Deferring here was inconsistency dressed up as discipline.
-
-The real invariant is narrower and this skill keeps it: **nothing mutates the branch after
-the final review closes.** Fixing before the review satisfies that, and the review then
-covers the fixes for free.
+This skill owns its fix wave (Phase E). Deferring the findings to the final review's fix
+wave was tried and fails: the handoff is voluntary and dropped findings just disappear, the
+review's fixer never sees the flow map, and a diff cannot verify a seam fix - a seam has two
+sides and a diff shows one. (Full history in the plugin repo's DESIGN.md.) The invariant
+that matters is narrower than "one gate owns all mutations", and this skill keeps it:
+**nothing mutates the branch after the final review closes.** Fixing before the review
+satisfies that, and the review then covers the fixes for free.
 
 ## Handing the record to the final review
 

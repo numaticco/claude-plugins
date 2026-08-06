@@ -89,10 +89,11 @@ The reviewer needs three things:
 1. **The plan** - absolute path.
 2. **The spec it derives from** - absolute path. Without it the reviewer can only check
    internal consistency, which the author already did.
-3. **The scenario list** - the numbered list under the spec's `## Scenarios` heading,
-   written there by `numatic:reviewing-specs`. Read it from the spec file; do not rely on
-   it being in this conversation, and do not re-derive a different list. If the spec has no
-   `## Scenarios` section, say so explicitly in the dispatch and point the reviewer at
+3. **The scenario list** - confirm the spec has a `## Scenarios` heading, written there by
+   `numatic:reviewing-specs`. The reviewer reads the list from the spec file itself; do not
+   paste a copy into the dispatch - the file is the source of truth, and a pasted copy can
+   go stale against it. Do not re-derive a different list. If the heading is missing, say
+   so explicitly in the dispatch and point the reviewer at
    `${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md` to derive one.
 
 ### Step 2 - Dispatch the reviewer
@@ -198,31 +199,12 @@ normal Superpowers execution handoff.
 
 ## What the reviewer checks
 
-The full contract is in `agents/plan-reviewer.md`. In summary, in priority order:
-
-**1. Reuse audit (the primary lens).** For every file the plan creates and every function
-or type it introduces, search the codebase for something that already does the job or most
-of it. Each is classified `DUPLICATE`, `NEAR-MATCH`, or `GENUINELY NEW`, and every
-near-match gets an argued extend-or-create verdict. Where the answer is extend, the plan
-must name the file, the current signature, the new signature, and every call site that
-changes. That is what makes it executable by an implementer who is otherwise forbidden from
-restructuring.
-
-**2. Spec coverage.** Every requirement in the spec maps to at least one task. Every task
-traces back to the spec. Requirements that vanished in translation, and tasks that
-implement things nobody asked for, are equally findings.
-
-**3. Scenario mapping.** Each scenario in the spec's `## Scenarios` list should be
-implemented by some task and verified by some test the plan names. A scenario the spec
-covers that no task implements is a Critical finding: the gap survived the spec review and
-is about to survive into code.
-
-**4. Interface consistency.** A type or signature defined in one task and consumed in
-another must match exactly. Names, shapes, nullability, error cases.
-
-**5. Task feasibility and ordering.** Is each task independently implementable and
-testable by a subagent that sees only its brief? Does any task depend on something a later
-task creates?
+The contract lives in `agents/plan-reviewer.md` and only there - restating it here is how
+the two copies drift. In one line each, in priority order: the reuse audit (every created
+thing classified DUPLICATE / NEAR-MATCH / GENUINELY NEW, each near-match argued to an
+extend-or-create verdict with a full extend specification - the primary lens), spec
+coverage, scenario mapping against the spec's `## Scenarios` list, interface consistency
+across tasks, task feasibility and ordering, and the cross-layer verdict.
 
 ## Red flags
 
