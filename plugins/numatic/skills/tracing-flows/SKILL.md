@@ -96,6 +96,22 @@ between layers).
 - **Standalone**, derive the list from
   `${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md`, plus flow-specific classes.
 
+**Open decisions** - in the SDD flow, also read the plan's `## Open decisions` section,
+written there by `numatic:reviewing-plans`. It records behavior questions the plan
+deliberately left unsettled, and the human's answer where there is one.
+
+This is not optional context. You run past compaction, so a question your human already
+decided in chat reaches you as an unexplained silence in the code - which is exactly what
+this skill is built to flag. Without the list you report a deliberate omission as a Critical
+gap, and independent agents reason their way to opposite conclusions about the same
+unspecified behavior.
+
+So: an absence covered by an answered open decision is **not a finding** - state it in prose
+as decided, and cite the decision. An absence covered by an `undecided` one is a finding
+against the decision, not against the code: it goes to the `needs human decision` pile in
+Phase E, never to a fixer. If the plan has no `## Open decisions` section, say so in the
+report and treat every absence on its merits.
+
 For large maps, use a couple of Explore agents to discover layers in parallel.
 
 ### Phase C - Fan-out audit
@@ -234,6 +250,19 @@ verified-safe items in prose.
 
 ## Subagent prompt templates
 
+Both templates carry an **Open decisions** block, pasted verbatim from the plan. The agents
+are the ones deciding what counts as a finding, so a list held only by the controller does
+not stop them raising it. If the plan has no such section, say that in the block rather than
+omitting it - "nothing was recorded" and "I did not paste it" have to look different from
+inside the agent.
+
+> Open decisions recorded in the plan (behavior deliberately left unsettled, with the human's
+> answer where there is one):
+> <the list, verbatim, or "The plan has no `## Open decisions` section.">
+> An absence covered by an ANSWERED decision is not a finding - say in prose that it is
+> decided, and cite the decision. An absence covered by an `undecided` one IS a finding, but
+> against the decision rather than the code: mark it `needs human decision`.
+
 **Seam agent:**
 
 > Flow under trace: <statement>. Flow map: <relevant slice>.
@@ -328,6 +357,8 @@ Without that, the reviewer never learns that files outside its range were modifi
 - **Stopping at the first blocker** - the number one failure. Mechanism 1 exists for this.
 - **Re-deriving scenarios in the SDD flow** - read the spec's `## Scenarios` list from the
   file, then extend it. Do not trust the conversation to still hold it.
+- **Skipping the plan's `## Open decisions`** - without it you report decisions your human
+  already made as Critical gaps, and two agents argue opposite sides of the same silence.
 - **Assuming the stack** - discover layers per project; do not hard-code names.
 - **Reporting a gap with no evidence** - every finding cites what you read (file:line).
 - **Auditing only changed code** - a flow includes unchanged layers a change now depends on.

@@ -66,19 +66,19 @@ digraph reviewing_plans {
     "Dispatch numatic:plan-fixer" [shape=box];
     "Dispatch scoped re-check" [shape=box];
     "Escalate open decisions" [shape=box];
-    "Record cross-layer flag" [shape=box];
+    "Record flag + open decisions" [shape=box];
     "Execution handoff" [shape=doublecircle];
 
     "Gather inputs" -> "Dispatch numatic:plan-reviewer";
     "Dispatch numatic:plan-reviewer" -> "Findings?";
-    "Findings?" -> "Record cross-layer flag" [label="none"];
+    "Findings?" -> "Record flag + open decisions" [label="none"];
     "Findings?" -> "Triage: mechanical vs human decision" [label="yes"];
     "Triage: mechanical vs human decision" -> "Dispatch numatic:plan-fixer" [label="mechanical"];
     "Triage: mechanical vs human decision" -> "Escalate open decisions" [label="needs decision"];
     "Dispatch numatic:plan-fixer" -> "Dispatch scoped re-check";
-    "Dispatch scoped re-check" -> "Record cross-layer flag";
-    "Escalate open decisions" -> "Record cross-layer flag";
-    "Record cross-layer flag" -> "Execution handoff";
+    "Dispatch scoped re-check" -> "Record flag + open decisions";
+    "Escalate open decisions" -> "Record flag + open decisions";
+    "Record flag + open decisions" -> "Execution handoff";
 }
 ```
 
@@ -116,7 +116,7 @@ say instead. A stranger could execute it. These go to the fixer.
 **Needs human decision** - the reviewer marked it as such, or the "fix" would require
 choosing between product or architecture options the spec does not settle. These do not go
 to a fixer, which would invent an answer and write it into the plan with confidence.
-They go to your human partner in Step 6.
+Step 6 writes them into the plan and Step 7 puts them in front of your human partner.
 
 Findings you believe are simply wrong stay with you: say so, with the reason, and do not
 forward them.
@@ -144,7 +144,12 @@ edited. It answers three questions:
 the re-check goes to the human alongside the Step 3 escalations. A plan question that
 survives an apply and a re-check is a judgment call, not a defect.
 
-### Step 6 - Record the cross-layer flag
+### Step 6 - Record the cross-layer flag and the open decisions
+
+Two things get written into the plan file here, for the same reason: they are read hours
+later by skills whose session no longer contains this conversation.
+
+**a. The cross-layer flag.**
 
 Decide whether this plan is **cross-layer**: does the feature traverse more than one layer
 that must agree on a contract (client and server, app and admin, schema and rules, service
@@ -161,6 +166,30 @@ The plan file is where this lives because the consumers read it hours later, pas
 compaction. `yes` means `numatic:tracing-flows` runs before the final review. `no` means it
 is skipped. Default to `yes` when uncertain - a skipped trace on a flow that needed one is a
 production bug, while an unnecessary trace costs one dispatch.
+
+**b. The open decisions.**
+
+Everything you are escalating to your human partner in Step 7 - the `needs human decision`
+findings from Step 3 and anything the re-check left unresolved - also goes into the plan,
+under its own heading:
+
+```
+## Open decisions
+
+- <the question, in one line> - <the answer, once the human gives one, or `undecided`>
+```
+
+Write it whether or not the human has answered yet, and update the line when they do. If
+there are none, write the heading with `- none`, so a later reader can tell "nothing was
+escalated" from "nobody wrote this down."
+
+This is the same durability argument as the scenario list and the cross-layer flag, and it
+closes a specific failure: `numatic:tracing-flows` runs past compaction and, finding no
+record, re-derives these questions from scratch. It then reports as a Critical gap something
+your human already decided to leave out of scope, or worse, two of its agents reach opposite
+conclusions about the same unspecified behavior. A decision that lives only in chat did not
+survive. Note that this is the record for **behavior questions the plan deliberately leaves
+open**, not a task list - implementation work belongs in tasks.
 
 ### Step 7 - Hand off
 
@@ -209,6 +238,7 @@ task creates?
 | "I'll just apply these findings myself, dispatching is overhead" | Controller edits skip the re-check and load the whole plan into the context that still has to run the implementation. |
 | "The scenario list is in our conversation already" | It is in the spec's `## Scenarios` section. Read it from the file - conversations get compacted. |
 | "This finding needs a design call, I'll pick something sensible" | Then the plan records a decision nobody made. Escalate it. |
+| "I escalated it, so it's handled" | Only if you wrote it into the plan's `## Open decisions`. Escalations made in chat do not survive compaction, and the trace re-raises them as findings. |
 
 ## Output
 
@@ -220,6 +250,7 @@ Report in chat:
 - Other findings applied, grouped by severity.
 - Findings not applied, with reasoning.
 - **Open for the human**: escalated decisions and anything the re-check left unresolved.
+  These are also written into the plan's `## Open decisions`, not left in chat.
 - The cross-layer verdict and what it means for the rest of the flow.
 
 The plan file is the artifact. Do not write a separate review document.

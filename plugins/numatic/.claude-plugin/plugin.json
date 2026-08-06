@@ -1,7 +1,7 @@
 {
   "name": "numatic",
   "description": "Closes four gaps in the Superpowers workflow: specs and plans get fresh-context adversarial review, plans get a mandatory reuse audit, branches get simplified before final review, and cross-layer flows get traced before the merge gate.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Igor Sadovskiy",
     "email": "tools@numatic.co"

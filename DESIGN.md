@@ -213,17 +213,29 @@ review contract in a dispatch; two sources of instruction is how standards drift
 
 ## Cross-skill state lives in files, never in the conversation
 
-Two handoffs cross a compaction boundary, so both are written to disk and **every consumer
-names the location it reads from**:
+Three handoffs cross a compaction boundary, so all three are written to disk and **every
+consumer names the location it reads from**:
 
 | State | Written by | Where | Read by |
 |---|---|---|---|
 | Scenario list | `numatic:reviewing-specs` | the spec's `## Scenarios` heading | `numatic:reviewing-plans`, `numatic:tracing-flows` |
 | Cross-layer verdict | `numatic:reviewing-plans` | the plan's Global Constraints, as `Cross-layer: yes \| no` | `numatic:simplifying-code`, `numatic:tracing-flows`, the hook's messages |
+| Open decisions | `numatic:reviewing-plans` | the plan's `## Open decisions` heading | `numatic:tracing-flows` |
 
 A missing `Cross-layer:` line is treated as `yes`. It usually means the plan review never
 ran, and silently skipping the trace in that case is exactly the failure the flag exists to
 prevent.
+
+Open decisions are the behavior questions a plan deliberately leaves unsettled, with the
+human's answer where there is one. `numatic:tracing-flows` needs them because it runs past
+compaction and cannot otherwise distinguish a deliberate omission from a gap: without the
+list it reports a decision the human already made as a Critical finding, and independent
+agents reason to opposite conclusions about the same silence. An **answered** decision turns
+a matching absence into prose, not a finding. An **undecided** one is a finding against the
+decision rather than the code, and goes to the human pile rather than to a fixer.
+
+Each row is one place a producer and a consumer must agree, which makes them the rows to
+check first when a skill starts behaving as if a step upstream never ran.
 
 Writing the location into the producer is not enough. If a consumer only says "the scenario
 list carried forward from the spec review," a post-compaction run falls back to deriving its

@@ -7,6 +7,11 @@ context the agent cannot discover on its own.
 **Do not restate the review instructions in a dispatch.** Two sources of instruction is how
 severity vocabulary and audit standards drift between runs.
 
+Every `[BRACKETED]` slot below is filled in by you before dispatching. `[TAXONOMY_FILE]` is
+the absolute path to `references/scenario-taxonomy.md`, which `SKILL.md` already gives you
+resolved - copy it from there. Nothing expands variables in this file, so a literal
+`${CLAUDE_PLUGIN_ROOT}` reaching the agent is a path it cannot read.
+
 ## 1. Reviewer
 
 ```
@@ -22,7 +27,7 @@ Agent(numatic:plan-reviewer):
     ## Scenario List
     [The numbered list from the spec's `## Scenarios` section, pasted in full.
      If the spec has no `## Scenarios` section, say so here and add:
-     "Derive scenarios from ${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md."]
+     "Derive scenarios from [TAXONOMY_FILE]."]
 
     ## Project Context
     [What this codebase is, which subsystem the plan touches, and any conventions a

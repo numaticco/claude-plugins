@@ -6,6 +6,11 @@ what changes per run: paths and context the agent cannot discover on its own.
 **Do not restate the review instructions in the dispatch.** Two sources of instruction is
 how severity vocabulary and review standards drift between runs.
 
+Every `[BRACKETED]` slot below is filled in by you before dispatching. `[TAXONOMY_FILE]` is
+the absolute path to `references/scenario-taxonomy.md`, which `SKILL.md` already gives you
+resolved - copy it from there. Nothing expands variables in this file, so a literal
+`${CLAUDE_PLUGIN_ROOT}` reaching the agent is a path it cannot read.
+
 ```
 Agent(numatic:spec-reviewer):
   description: "Review spec (content)"
@@ -14,7 +19,7 @@ Agent(numatic:spec-reviewer):
     Read: [SPEC_FILE]
 
     ## Scenario Taxonomy
-    Read: ${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md
+    Read: [TAXONOMY_FILE]
 
     Walk every class in it against this spec. This is your primary lens.
 

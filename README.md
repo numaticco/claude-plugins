@@ -161,7 +161,10 @@ in the workflow, and audits:
   file so it survives compaction.
 
 Findings that require a decision nothing specifies are never handed to the fixer. They go
-to your human partner.
+to your human partner, and they are also written into the plan under `## Open decisions`.
+`tracing-flows` reads that section hours later: without it, a question you already settled
+in chat reaches the trace as an unexplained silence in the code and comes back as a Critical
+finding.
 
 ### `numatic:simplifying-code`
 
@@ -236,7 +239,14 @@ step that mutates the branch after the review closes is the failure the slot des
 to prevent.
 
 Each injection fires **once per session per subject**, so applying review fixes to a plan
-does not re-trigger the review that produced them.
+does not re-trigger the review that produced them. The one exception is the merge-gate
+**block**, which fires on every attempt: retrying is exactly what a blocked agent does, and
+a gate that only blocks the first attempt does not block. It stops on its own once the
+missing steps have run, because it is generated from the records rather than from a marker.
+For a step the plan did not require - `numatic:tracing-flows` under `Cross-layer: no` - it
+keeps firing, because the hook reads session records and not the plan. That case is meant to
+be answered rather than silenced: the message asks for the reason, and saying the plan
+scoped the step out is a complete answer.
 
 The hook is silent otherwise. A session that never touches this workflow never sees a token
 from it.
@@ -251,6 +261,12 @@ from it.
 The plan pattern requires the date prefix Superpowers uses. A bare `/plans?/.*\.md$` fires
 on roadmaps, templates, and meeting notes, and every false positive asks for a plan review
 with no spec to review against.
+
+Session records live under `CLAUDE_PLUGIN_DATA`, which Claude Code sets. If it is ever
+missing, the hook falls back to a directory under the system temp dir rather than going
+stateless - the merge gate is built entirely out of those records, so a stateless path would
+turn the plugin's only enforcement point off while every other part still looked healthy.
+The markers are empty files keyed by session id, and nothing reads a previous session's.
 
 To keep the skills but turn the automation off, disable the plugin and invoke the skills by
 hand. Do not delete `hooks/hooks.json` from the installed copy - the next marketplace update

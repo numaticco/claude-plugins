@@ -21,8 +21,9 @@
  * under CLAUDE_PLUGIN_DATA), so the merge-gate check reports facts instead of asking a
  * post-compaction model to attest to history it cannot see.
  *
- * Every injection fires at most once per session per subject, so applying review fixes to
- * a plan does not re-trigger the review that produced them.
+ * Advice fires at most once per session per subject, so applying review fixes to a plan
+ * does not re-trigger the review that produced them. The merge-gate BLOCK is exempt: it
+ * fires on every attempt, because retrying is exactly what a blocked agent does.
  *
  * Node, not python or jq: Claude Code runs on Node, so it is the only runtime guaranteed
  * to exist on a machine that can run this plugin at all.
@@ -33,8 +34,9 @@
 
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 // Where specs and plans live. Superpowers' defaults; override per project if your team
 // keeps them elsewhere. The plan pattern requires the YYYY-MM-DD prefix Superpowers uses,
@@ -82,9 +84,22 @@ const TAIL_START_SKILLS = new Set([
   'superpowers:executing-plans',
 ]);
 
+/**
+ * Where marker files live. Never returns null.
+ *
+ * CLAUDE_PLUGIN_DATA is the right home when Claude Code provides it. When it does not, a
+ * null here would silently disable every record and every check - and because the merge
+ * gate is built out of those records, an unset variable would turn the plugin's only
+ * enforcement point off while everything else still looked like it worked. Fail closed
+ * instead: fall back to the temp dir.
+ *
+ * Every marker key is session-scoped (`<sessionId>.<name>`) and nothing reads a prior
+ * session's markers, so the fallback only has to be stable for the life of one session.
+ * os.tmpdir() is, and it does not write into ~/.claude behind the user's back.
+ */
 function dataDir(kind) {
-  const root = process.env.CLAUDE_PLUGIN_DATA;
-  return root ? path.join(root, kind) : null;
+  const root = process.env.CLAUDE_PLUGIN_DATA || path.join(os.tmpdir(), 'numatic-flow-overlay');
+  return path.join(root, kind);
 }
 
 function safeKey(key) {
@@ -94,7 +109,6 @@ function safeKey(key) {
 /** Record that a skill ran this session. Idempotent; never throws. */
 function recordRan(sessionId, name) {
   const dir = dataDir('ran');
-  if (!dir) return;
   try {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${sessionId}.${safeKey(name)}`), '');
@@ -105,7 +119,6 @@ function recordRan(sessionId, name) {
 
 function hasRun(sessionId, name) {
   const dir = dataDir('ran');
-  if (!dir) return false;
   try {
     return fs.existsSync(path.join(dir, `${sessionId}.${safeKey(name)}`));
   } catch {
@@ -121,8 +134,6 @@ function hasRun(sessionId, name) {
  */
 function alreadyFired(sessionId, key) {
   const dir = dataDir('fired');
-  if (!dir) return false;
-
   const marker = path.join(dir, `${sessionId}.${safeKey(key)}`);
   try {
     fs.mkdirSync(dir, { recursive: true });
@@ -136,8 +147,24 @@ function alreadyFired(sessionId, key) {
 }
 
 /**
- * The merge-gate message, generated from this session's records rather than asked of the
- * model's memory. Returns null when there is nothing to say.
+ * The merge-gate decision, generated from this session's records rather than asked of the
+ * model's memory. Returns [dedupeKey, message], or null when there is nothing to say.
+ *
+ * The two branches get different dedupe treatment, and the difference is the point:
+ *
+ *   - The advisory branch asks a question the records cannot answer. Nothing it says will
+ *     ever make it stop firing, because its premise is the ABSENCE of state. It gets a
+ *     dedupe key, so a bugfix branch that was already told to ignore it is not told twice.
+ *   - The enforcement branch names steps that demonstrably did not run. It gets a null key
+ *     - never deduped - because the agent's response to a block IS to retry, and a gate
+ *     that only blocks the first attempt does not block. It self-silences instead: once
+ *     the missing steps run, their markers exist and this function returns null.
+ *
+ * The self-silencing has one hole, and it is deliberate rather than fixed. Under
+ * `Cross-layer: no` the plan does not require `numatic:tracing-flows`, so its marker never
+ * appears and the block repeats for the rest of the session. Closing it would mean parsing
+ * the plan from a hook that has no reliable way to find it, to suppress a message that
+ * already asks for exactly the answer the agent has: the plan scoped the step out.
  */
 function finishMessage(sessionId) {
   const tailStarted = hasRun(sessionId, 'tail-started');
@@ -148,7 +175,10 @@ function finishMessage(sessionId) {
     // No plan execution recorded in this session. The branch may still come from a
     // reviewed plan run in an EARLIER session, so ask - but scoped, so a quick bugfix
     // branch is explicitly told to ignore this.
-    return `[numatic] Merge gate reached. This session has no record of a plan execution. If this branch was built from a reviewed plan (possibly in an earlier session), confirm before finishing: numatic:simplifying-code ran after the last task, numatic:tracing-flows ran if the plan's Global Constraints say \`Cross-layer: yes\` (treat a missing line as yes), and the final whole-branch review ran AFTER both. If a required step is missing, run it now and then re-run the final review. If this branch was not built from a reviewed plan, ignore this message and finish normally.`;
+    return [
+      'finish-ask',
+      `[numatic] Merge gate reached. This session has no record of a plan execution. If this branch was built from a reviewed plan (possibly in an earlier session), confirm before finishing: numatic:simplifying-code ran after the last task, numatic:tracing-flows ran if the plan's Global Constraints say \`Cross-layer: yes\` (treat a missing line as yes), and the final whole-branch review ran AFTER both. If a required step is missing, run it now and then re-run the final review. If this branch was not built from a reviewed plan, ignore this message and finish normally.`,
+    ];
   }
 
   if (simplified && traced) return null;
@@ -161,11 +191,15 @@ function finishMessage(sessionId) {
     );
   }
 
-  return `[numatic] Merge gate reached. Session records show these steps did NOT run:
+  // null key: enforcement, never deduped. See the note on this function.
+  return [
+    null,
+    `[numatic] Merge gate reached. Session records show these steps did NOT run:
 
   - ${missing.join('\n  - ')}
 
-For each step that was actually required: run it now, then RE-RUN the final whole-branch review before finishing - late changes must not ship unreviewed. If a listed step was genuinely not required, say why and proceed.`;
+For each step that was actually required: run it now, then RE-RUN the final whole-branch review before finishing - late changes must not ship unreviewed. If a listed step was genuinely not required, say why and proceed.`,
+  ];
 }
 
 /**
@@ -196,7 +230,10 @@ function compactMessage(sessionId) {
 Both run before the final review so the review covers their changes. Nothing mutates the branch after the review closes.`;
 }
 
-/** Returns [dedupeKey, message] or null. Message may be null (record-only, no injection). */
+/**
+ * Returns [dedupeKey, message] or null (nothing to inject). A dedupeKey of null means this
+ * message is enforcement rather than advice and must fire on every occurrence.
+ */
 function decide(payload, sessionId) {
   const tool = payload.tool_name;
   const toolInput = payload.tool_input || {};
@@ -212,7 +249,8 @@ function decide(payload, sessionId) {
     const skill = String(toolInput.skill || '');
     if (TAIL_START_SKILLS.has(skill)) return ['tail', TAIL_MESSAGE];
     if (skill === 'superpowers:finishing-a-development-branch') {
-      return ['finish', finishMessage(sessionId)];
+      // finishMessage picks its own dedupe key: advisory is deduped, enforcement is not.
+      return finishMessage(sessionId);
     }
     return null;
   }
@@ -263,7 +301,9 @@ function main() {
 
   const [key, message] = decision;
   if (!message) return;
-  if (alreadyFired(sessionId, key)) return;
+  // A null key opts out of dedupe: the message enforces rather than advises, and it
+  // self-silences by not being generated once the thing it enforces has happened.
+  if (key !== null && alreadyFired(sessionId, key)) return;
 
   emit('PostToolUse', message);
 }
