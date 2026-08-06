@@ -28,4 +28,4 @@ The reviewer returns: scenario coverage table, strengths, findings
 (Critical/Important/Minor, some marked `needs author decision`), and an assessment.
 
 Findings are applied by **you, in the main session** - see Step 3 of `SKILL.md` for why
-this skill does not dispatch an applier the way `numatic:reviewing-plans` does.
+this skill does not dispatch a fixer the way `numatic:reviewing-plans` does.

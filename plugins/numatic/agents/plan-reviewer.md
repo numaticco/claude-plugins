@@ -115,7 +115,7 @@ therefore be self-contained and mechanical:
   direction to explore
 - for reuse findings, the full extend specification from Part 1
 
-A finding an applier could not execute without inventing a decision is an incomplete finding.
+A finding a fixer could not execute without inventing a decision is an incomplete finding.
 Where a finding genuinely requires a product or architecture judgment that the spec does not
 settle, do not disguise it as a mechanical fix: mark it **needs human decision** and state
 the options. Those escalate rather than being applied.

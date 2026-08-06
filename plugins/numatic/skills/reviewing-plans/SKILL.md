@@ -1,6 +1,6 @@
 ---
 name: reviewing-plans
-description: Use immediately after an implementation plan is written and self-reviewed, before the execution handoff and before any task is dispatched. Dispatches a fresh-context reviewer to audit the plan against its spec, and critically to audit REUSE - whether each new file or function duplicates something the codebase already has - then a separate applier to fix the plan. Triggers on "review the plan", "is this plan ready", "check the implementation plan", or a plan landing in docs/superpowers/plans/.
+description: Use immediately after an implementation plan is written and self-reviewed, before the execution handoff and before any task is dispatched. Dispatches a fresh-context reviewer to audit the plan against its spec, and critically to audit REUSE - whether each new file or function duplicates something the codebase already has - then a separate fixer to apply the findings. Triggers on "review the plan", "is this plan ready", "check the implementation plan", or a plan landing in docs/superpowers/plans/.
 ---
 
 # Reviewing Plans
@@ -63,7 +63,7 @@ digraph reviewing_plans {
     "Dispatch numatic:plan-reviewer" [shape=box];
     "Findings?" [shape=diamond];
     "Triage: mechanical vs human decision" [shape=box];
-    "Dispatch numatic:plan-applier" [shape=box];
+    "Dispatch numatic:plan-fixer" [shape=box];
     "Dispatch scoped re-check" [shape=box];
     "Escalate open decisions" [shape=box];
     "Record cross-layer flag" [shape=box];
@@ -73,9 +73,9 @@ digraph reviewing_plans {
     "Dispatch numatic:plan-reviewer" -> "Findings?";
     "Findings?" -> "Record cross-layer flag" [label="none"];
     "Findings?" -> "Triage: mechanical vs human decision" [label="yes"];
-    "Triage: mechanical vs human decision" -> "Dispatch numatic:plan-applier" [label="mechanical"];
+    "Triage: mechanical vs human decision" -> "Dispatch numatic:plan-fixer" [label="mechanical"];
     "Triage: mechanical vs human decision" -> "Escalate open decisions" [label="needs decision"];
-    "Dispatch numatic:plan-applier" -> "Dispatch scoped re-check";
+    "Dispatch numatic:plan-fixer" -> "Dispatch scoped re-check";
     "Dispatch scoped re-check" -> "Record cross-layer flag";
     "Escalate open decisions" -> "Record cross-layer flag";
     "Record cross-layer flag" -> "Execution handoff";
@@ -111,20 +111,20 @@ One reviewer, one round, by default.
 Split what came back into two piles before dispatching anything:
 
 **Mechanical** - the finding names the task, quotes what it says, and states what it must
-say instead. A stranger could execute it. These go to the applier.
+say instead. A stranger could execute it. These go to the fixer.
 
 **Needs human decision** - the reviewer marked it as such, or the "fix" would require
 choosing between product or architecture options the spec does not settle. These do not go
-to an applier, which would invent an answer and write it into the plan with confidence.
+to a fixer, which would invent an answer and write it into the plan with confidence.
 They go to your human partner in Step 6.
 
 Findings you believe are simply wrong stay with you: say so, with the reason, and do not
 forward them.
 
-### Step 4 - Dispatch the applier
+### Step 4 - Dispatch the fixer
 
-Dispatch the **`numatic:plan-applier`** agent with the plan path, the spec path, and the
-mechanical findings verbatim. Do not summarize the findings - the applier's fidelity to the
+Dispatch the **`numatic:plan-fixer`** agent with the plan path, the spec path, and the
+mechanical findings verbatim. Do not summarize the findings - the fixer's fidelity to the
 plan depends on receiving the full text, including the extend specifications.
 
 Never apply the findings yourself. Controller edits skip the re-check and reload the whole
@@ -132,13 +132,13 @@ plan into the context that still has an implementation run ahead of it.
 
 ### Step 5 - Dispatch the scoped re-check
 
-One fresh subagent, given only: the applied findings and the sections the applier reports it
+One fresh subagent, given only: the applied findings and the sections the fixer reports it
 edited. It answers three questions:
 
 - Does each edit change what the task **instructs**, or was it reworded?
 - Is a changed interface reflected everywhere it appears in the plan? A changed signature
   usually touches more than one task.
-- Did the edits contradict anything the applier did not touch?
+- Did the edits contradict anything the fixer did not touch?
 
 **One apply round and one re-check. There is no second wave.** Anything still open after
 the re-check goes to the human alongside the Step 3 escalations. A plan question that

@@ -80,14 +80,14 @@ cheap.
 ### Step 3 - Apply findings yourself, in the main session
 
 This is the one place in the flow where the author applies the fixes, and the asymmetry is
-deliberate. `numatic:reviewing-plans` dispatches a separate applier; this skill does not.
+deliberate. `numatic:reviewing-plans` dispatches a separate fixer; this skill does not.
 
 **A spec fix has no upstream source of truth.** When a plan review says "Task 3 duplicates
 `humanizeDuration`," the finding carries its own answer and any competent stranger can
 execute it. When a spec review says "the spec is silent on what happens when the record
 does not exist," the answer is not in the spec, not in the codebase, and not in the
 finding. It is in the brainstorming conversation and in your human partner's head. A fresh
-applier would not apply that fix; it would invent a design decision and write it in with
+fixer would not apply that fix; it would invent a design decision and write it in with
 confidence, which is worse than author bias.
 
 The independent check the split would buy already exists here: **the human gate is the very
@@ -153,7 +153,7 @@ violated? "Fast", "robust", and "user-friendly" are not testable. What would mak
 | "The human reviews it next anyway" | The human is reviewing prose for intent, not auditing scenario coverage against a taxonomy. |
 | "Scenario X obviously doesn't apply here" | Then say that in the spec. Obvious-to-you is silence-to-the-planner. |
 | "We can catch this in the plan review" | The plan review checks the plan against the spec. It inherits the spec's blind spots. |
-| "I'll dispatch a fixer like the plan review does" | Spec fixes need intent the finding does not carry. A fresh applier would invent the design decision. Apply them here, then the human gate checks you. |
+| "I'll dispatch a fixer like the plan review does" | Spec fixes need intent the finding does not carry. A fresh fixer would invent the design decision. Apply them here, then the human gate checks you. |
 | "I'll just answer this `needs author decision` and move on" | Answer it, but flag it. A design call made silently inside a review is how a spec acquires decisions nobody agreed to. |
 
 ## Output

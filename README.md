@@ -143,7 +143,7 @@ heading. Both downstream skills read it from there.
 ### `numatic:reviewing-plans`
 
 The important one, and the only three-role loop in the plugin: `numatic:plan-reviewer`
-finds, `numatic:plan-applier` fixes, and a scoped re-check confirms. All three are separate
+finds, `numatic:plan-fixer` applies, and a scoped re-check confirms. All three are separate
 contexts; the orchestrator keeps the triage and the human handoff.
 
 The reviewer is **explicitly permitted to crawl the codebase**, unlike every other reviewer
@@ -160,7 +160,7 @@ in the workflow, and audits:
   Global Constraints. That line decides whether `tracing-flows` runs later, and lives in the
   file so it survives compaction.
 
-Findings that require a decision nothing specifies are never handed to the applier. They go
+Findings that require a decision nothing specifies are never handed to the fixer. They go
 to your human partner.
 
 ### `numatic:simplifying-code`
@@ -191,7 +191,7 @@ than re-deriving one. Standalone, it keeps a `--resume` mode for re-tracing afte
 
 ## The agents
 
-Reviewers and appliers are plugin agents, not prompts pasted into a generic subagent. The
+Reviewers and fixers are plugin agents, not prompts pasted into a generic subagent. The
 frontmatter binds model and tool policy; the system prompt holds the review contract and the
 severity vocabulary. A skill that pastes a prompt only requests those things, and the drift
 shows up as reviewers inventing their own severity scales.
@@ -200,7 +200,7 @@ shows up as reviewers inventing their own severity scales.
 |---|---|
 | `numatic:spec-reviewer` | Reviews spec content. Read-only plus search. |
 | `numatic:plan-reviewer` | Reviews the plan and runs the reuse audit. Read-only plus search, capable model. |
-| `numatic:plan-applier` | Applies plan-review findings. Edits the plan document only, never source. |
+| `numatic:plan-fixer` | Applies plan-review findings. Edits the plan document only, never source. |
 | `numatic:flow-fixer` | Applies flow-trace findings. Licensed to edit outside the branch diff, and reports every such change. |
 
 Dispatch briefs carry paths and project context only. The contract lives in the agent.
@@ -209,7 +209,7 @@ Dispatch briefs carry paths and project context only. The contract lives in the 
 upstream source of truth (the spec settles what is correct, and reuse findings arrive
 mechanical), so a stranger can execute it. A spec fix does not - "the spec is silent on what
 happens when the record is missing" has its answer in the brainstorming conversation and in
-your head, and a fresh applier would invent a design decision rather than apply one. The
+your head, and a fresh fixer would invent a design decision rather than apply one. The
 independent check a split would buy is already there: the human gate is the next step.
 
 ## How it runs automatically
@@ -270,7 +270,7 @@ claude-plugins/
 │       ├── agents/
 │       │   ├── spec-reviewer.md
 │       │   ├── plan-reviewer.md
-│       │   ├── plan-applier.md
+│       │   ├── plan-fixer.md
 │       │   └── flow-fixer.md
 │       ├── hooks/
 │       │   ├── hooks.json

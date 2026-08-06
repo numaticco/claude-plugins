@@ -164,14 +164,14 @@ the cheapest place to avoid feeding it.
 
 **A spec fix has no upstream source of truth.** "The spec is silent on what happens when the
 record does not exist" has its answer in the brainstorming conversation and in the author's
-head - not in the spec, not in the codebase, not in the finding. A fresh applier would not
+head - not in the spec, not in the codebase, not in the finding. A fresh fixer would not
 apply that fix; it would invent a design decision and write it in with confidence, which is
 worse than author bias. The independent check a split would buy already exists: the human
 gate is the very next step.
 
 The general rule the two cases share: **dispatch what has a source of truth; never dispatch
 what requires intent.** Both loops therefore triage findings into mechanical vs
-`needs human/author decision`, and only the mechanical pile is ever handed to an applier.
+`needs human/author decision`, and only the mechanical pile is ever handed to a fixer.
 
 ### tracing-flows owns its fix wave
 
@@ -197,7 +197,7 @@ fixes for free.
 
 ### Reviewers are plugin agents, not pasted prompts
 
-`agents/spec-reviewer.md`, `agents/plan-reviewer.md`, `agents/plan-applier.md`, and
+`agents/spec-reviewer.md`, `agents/plan-reviewer.md`, `agents/plan-fixer.md`, and
 `agents/flow-fixer.md` bind model, tool policy, and severity vocabulary in frontmatter and a
 system prompt. A skill that pastes a prompt file into a generic subagent only *requests*
 those things, and drift between runs shows up as reviewers inventing HIGH/MEDIUM/LOW scales
