@@ -67,6 +67,9 @@ For each scenario in the scenario list (the spec's `## Scenarios` section): whic
 implements it, and which test named in the plan verifies it? A scenario the spec covers with
 no implementing task is Critical - the gap is about to reach production code.
 
+Ignore `N/A:` lines under that heading - they are classes the spec review cleared as unable
+to manifest, not scenarios to implement.
+
 ## Part 4: Interface Consistency
 
 Types and signatures defined in one task and consumed by another must match exactly: names,

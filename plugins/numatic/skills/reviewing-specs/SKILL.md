@@ -177,6 +177,21 @@ carrying it in the conversation: `numatic:reviewing-plans` runs after planning a
 *these* scenarios rather than derive a fresh set of their own. In the spec they survive;
 in chat they do not.
 
+**What an entry is:** one concrete, testable behavior in the spec's own terms - the
+situation and the expected outcome. "Two admins edit the same record; last write wins and
+the loser sees a stale-data notice", not "Concurrency". Taxonomy classes are how the list
+is derived, not what it contains: a covered class yields one entry per distinct behavior.
+The bar is an entry a plan task can implement and a named test can verify - downstream,
+`numatic:tracing-flows` dispatches one agent per entry, and an abstract entry produces an
+abstract trace.
+
+**N/A classes go in too.** After the numbered list, record every class the reviewer cleared
+as N/A, one line each: `N/A: <class> - <foreclosing property>`. The verdict otherwise lives
+only in this conversation, and `numatic:tracing-flows` runs past compaction: finding neither
+a scenario nor an out-of-scope statement for the class, it cannot tell cleared from never
+considered, and re-raises it. This is the same durability failure the plan's
+`## Open decisions` section exists to prevent.
+
 **Where it goes:** append it at the end, after the spec's last existing section. The heading
 is literally `## Scenarios` - five places downstream locate the list by that exact string, so
 it carries no section number even in a spec whose other headings are numbered. Appending is

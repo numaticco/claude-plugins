@@ -213,14 +213,22 @@ review contract in a dispatch; two sources of instruction is how standards drift
 
 ## Cross-skill state lives in files, never in the conversation
 
-Three handoffs cross a compaction boundary, so all three are written to disk and **every
+These handoffs cross a compaction boundary, so each is written to disk and **every
 consumer names the location it reads from**:
 
 | State | Written by | Where | Read by |
 |---|---|---|---|
 | Scenario list | `numatic:reviewing-specs` | the spec's `## Scenarios` heading | `numatic:reviewing-plans`, `numatic:tracing-flows` |
+| N/A classes | `numatic:reviewing-specs` | `N/A: <class> - <foreclosing property>` lines under `## Scenarios` | `numatic:reviewing-plans` (skips them), `numatic:tracing-flows` (spot-checks the property still holds) |
 | Cross-layer verdict | `numatic:reviewing-plans` | the plan's Global Constraints, as `Cross-layer: yes \| no` | `numatic:simplifying-code`, `numatic:tracing-flows`, the hook's messages |
 | Open decisions | `numatic:reviewing-plans` | the plan's `## Open decisions` heading | `numatic:tracing-flows` |
+| Out-of-diff fix list | `numatic:tracing-flows` Phase E (from the flow-fixer's report) | `flow-trace.md`, "Changed Outside the Branch Diff" | the final whole-branch review |
+
+The scenario-list entries are concrete behaviors (situation -> expected outcome), not
+taxonomy class names - `tracing-flows` dispatches one agent per entry, so an abstract entry
+produces an abstract trace. The N/A lines exist because a reviewer verdict that lives only
+in the review conversation cannot be distinguished, post-compaction, from a class nobody
+considered - the same failure `## Open decisions` closes for plan escalations.
 
 A missing `Cross-layer:` line is treated as `yes`. It usually means the plan review never
 ran, and silently skipping the trace in that case is exactly the failure the flag exists to

@@ -93,6 +93,11 @@ between layers).
   missing ones they did. Add newly discovered scenarios to the list - do not silently
   replace it. If the spec genuinely has no `## Scenarios` section, say so in the report,
   then derive from the taxonomy.
+
+  `N/A:` lines under the same heading are taxonomy classes the spec review cleared with a
+  foreclosing property (no new writer, no new I/O, ...). Do not trace them as scenarios.
+  Spot-check that the property still holds now that the code exists, and raise a finding
+  only where implementation introduced exactly what the property said was absent.
 - **Standalone**, derive the list from
   `${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md`, plus flow-specific classes.
 
@@ -155,7 +160,10 @@ rebuild context and re-run the suite, and a fix wave that costs more than the tr
 the point.
 
 The fixer is licensed to edit layers outside the branch diff, and returns a list of every
-such change. Keep that list; the final review needs it.
+such change. Append that list - the fixer's "Changed Outside the Branch Diff" section,
+verbatim - to the trace file (see Output). The final review reads it from there; kept only
+in chat it does not survive compaction, and the review then never learns those files
+changed.
 
 **3. Scoped re-trace.** Re-run only the affected seams and scenario clusters, plus anything
 downstream of a fixed break - `contingent` findings become real once their blocker is fixed.
@@ -295,7 +303,9 @@ inside the agent.
 **Chat (primary):** ranked findings, each self-contained enough to act on ("fix #3")
 without re-investigating. Group by severity.
 
-**File (durability anchor):** full flow map plus all findings.
+**File (durability anchor):** full flow map plus all findings. After Phase E, also the fix
+wave's outcome: the fixer's "Changed Outside the Branch Diff" section verbatim, and the
+re-trace verdict per finding (Fixed / Still-open / New).
 
 - **Standalone:** write to the **session scratchpad** as `tracing-flows-<flow-slug>.md`.
   Outside the repo - never write into the project, never commit it. On `--resume`, append
@@ -339,10 +349,11 @@ The final review still receives the trace, now as context and residual triage ra
 the fix mechanism. When dispatching it, say:
 
 > A flow trace ran before this review and its mechanical findings were fixed. Read
-> `<path to flow-trace.md>` for the findings and `<fixer's out-of-diff list>` for changes
-> outside your diff range. Those changes are real and unreviewed - the trace is flow-scoped
-> and you are diff-scoped, so your git range does not contain them. Review them as part of
-> this branch, and triage the residual findings the trace could not fix.
+> `<path to flow-trace.md>` for the findings, and its "Changed Outside the Branch Diff"
+> section for changes outside your diff range. Those changes are real and unreviewed - the
+> trace is flow-scoped and you are diff-scoped, so your git range does not contain them.
+> Review them as part of this branch, and triage the residual findings the trace could not
+> fix.
 
 Without that, the reviewer never learns that files outside its range were modified.
 
