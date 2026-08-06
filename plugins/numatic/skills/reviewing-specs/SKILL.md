@@ -131,6 +131,8 @@ scenario taxonomy lives in `${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.m
 
 **1. Scenario coverage.** Walk the taxonomy. For each class, does the spec state what
 should happen, or is it silent? Explicitly out of scope is a pass. Silence is a finding.
+A class the change gives no site to manifest at - no new code path, writer, I/O or actor -
+is marked N/A, but only with that property named and verified against the repo.
 
 **2. Ambiguity.** Any requirement two competent engineers would implement differently.
 The test is not "is this unclear" but "could this be read two ways" - a sentence can be
@@ -151,7 +153,7 @@ violated? "Fast", "robust", and "user-friendly" are not testable. What would mak
 | "This spec is short, review is overkill" | Short specs hide gaps by omission. Length is not coverage. |
 | "I'll review it myself, I know the context" | Knowing the context is the disqualification. Dispatch it. |
 | "The human reviews it next anyway" | The human is reviewing prose for intent, not auditing scenario coverage against a taxonomy. |
-| "Scenario X obviously doesn't apply here" | Then say that in the spec. Obvious-to-you is silence-to-the-planner. |
+| "Scenario X obviously doesn't apply here" | Then say that in the spec. Obvious-to-you is silence-to-the-planner. Only a reviewer N/A with a verified foreclosing property clears a class without a sentence in the spec. |
 | "We can catch this in the plan review" | The plan review checks the plan against the spec. It inherits the spec's blind spots. |
 | "I'll dispatch a fixer like the plan review does" | Spec fixes need intent the finding does not carry. A fresh fixer would invent the design decision. Apply them here, then the human gate checks you. |
 | "I'll just answer this `needs author decision` and move on" | Answer it, but flag it. A design call made silently inside a review is how a spec acquires decisions nobody agreed to. |
@@ -174,3 +176,10 @@ carrying it in the conversation: `numatic:reviewing-plans` runs after planning a
 `numatic:tracing-flows` runs hours later, past compaction, and both are supposed to verify
 *these* scenarios rather than derive a fresh set of their own. In the spec they survive;
 in chat they do not.
+
+**Where it goes:** append it at the end, after the spec's last existing section. The heading
+is literally `## Scenarios` - five places downstream locate the list by that exact string, so
+it carries no section number even in a spec whose other headings are numbered. Appending is
+what keeps those two facts compatible: at the end, an unnumbered heading reads as a closing
+appendix; wedged mid-document it breaks the spec's own numbering and forward-references
+sections the reader has not reached yet.

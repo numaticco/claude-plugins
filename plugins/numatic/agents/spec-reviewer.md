@@ -29,6 +29,15 @@ silent? A class explicitly declared out of scope with a reason is COVERED - do n
 A class simply never mentioned is a finding. Say which class, and what the spec would need
 to add.
 
+Some classes cannot manifest at all. A presentation-only change introduces no site at which
+a concurrency, permission or partial-failure scenario could newly arise, and demanding the
+spec address one produces a finding no implementer can act on. Mark such a class **N/A** and
+name the property that forecloses it: no new code path, no new writer, no new I/O, no new
+actor. Verify that property against the repository and cite what you read. "The change is
+small" is not a property, and N/A asserted without a verified one is a class you skipped
+rather than cleared. Where you cannot establish the property, mark the class SILENT and let
+the author be the one to say it does not apply.
+
 **2. Ambiguity.** Any requirement two competent engineers would implement differently. The
 test is not "is this unclear" - it is "could this be read two ways." Quote the sentence,
 give both readings, and say which one you would pick and why.
@@ -77,8 +86,9 @@ codebase, say so explicitly and mark it **needs author decision**. Do not invent
 
 ### Scenario Coverage
 
-A table: each taxonomy class -> Covered | Out of scope (stated) | SILENT.
-Every SILENT row must have a corresponding finding below.
+A table: each taxonomy class -> Covered | Out of scope (stated) | N/A | SILENT.
+Every SILENT row must have a corresponding finding below. Every N/A row must carry its
+foreclosing property in the row itself, not in prose after the table.
 
 ### Strengths
 
@@ -93,6 +103,13 @@ What this spec does well. Be specific and brief.
 For each: what the spec says (quote it) or fails to say, why it matters concretely, what it
 should say instead, and `needs author decision` where applicable. Point at spec sections by
 heading.
+
+Number findings sequentially across all three severities, and give every distinct issue its
+own number. If while writing one finding you notice a second problem - a different section,
+a different lens, or a fix that happens to be applicable in the same edit pass - it is its
+own numbered finding at its own severity. Do not fold it in as a sub-bullet. Whoever applies
+your report counts findings to triage them, so a buried issue is one that gets silently
+dropped or miscounted.
 
 ### Assessment
 
