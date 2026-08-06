@@ -2,15 +2,24 @@
 /**
  * Inject the Numatic flow overlay at the joints of the Superpowers workflow.
  *
- * Runs as a PostToolUse hook matched on `Write|Skill`. Claude Code matches hooks on the
- * TOOL NAME only (verified empirically - a matcher naming a skill never fires), so all
- * real filtering happens here.
+ * Runs as:
+ *   - a PostToolUse hook matched on `Write|Skill`. Claude Code matches hooks on the
+ *     TOOL NAME only (verified empirically - a matcher naming a skill never fires), so all
+ *     real filtering happens here.
+ *   - a SessionStart hook matched on `compact`, which re-injects pending tail state that
+ *     compaction would otherwise erase.
  *
  * Injection points:
- *   Write <spec path>                                -> run numatic:reviewing-specs
- *   Write <plan path>                                -> run numatic:reviewing-plans
+ *   Write <spec path>                                 -> run numatic:reviewing-specs
+ *   Write <plan path>                                 -> run numatic:reviewing-plans
  *   Skill superpowers:subagent-driven-development     -> plan the tail of the flow
- *   Skill superpowers:finishing-a-development-branch  -> guard the merge gate
+ *   Skill superpowers:executing-plans                 -> same tail (inline execution path)
+ *   Skill superpowers:finishing-a-development-branch  -> guard the merge gate, from records
+ *   SessionStart (compact)                            -> re-state the pending tail, if any
+ *
+ * State, not memory. The hook records which skills actually ran this session (marker files
+ * under CLAUDE_PLUGIN_DATA), so the merge-gate check reports facts instead of asking a
+ * post-compaction model to attest to history it cannot see.
  *
  * Every injection fires at most once per session per subject, so applying review fixes to
  * a plan does not re-trigger the review that produced them.
@@ -28,45 +37,81 @@ const fs = require('fs');
 const path = require('path');
 
 // Where specs and plans live. Superpowers' defaults; override per project if your team
-// keeps them elsewhere.
+// keeps them elsewhere. The plan pattern requires the YYYY-MM-DD prefix Superpowers uses,
+// so a roadmap in docs/plans/ does not trigger a review that has no spec to review against.
 const SPEC_PATTERN = new RegExp(process.env.NUMATIC_SPEC_PATTERN || '/specs?/.*-design\\.md$');
-const PLAN_PATTERN = new RegExp(process.env.NUMATIC_PLAN_PATTERN || '/plans?/.*\\.md$');
+const PLAN_PATTERN = new RegExp(
+  process.env.NUMATIC_PLAN_PATTERN || '/plans?/\\d{4}-\\d{2}-\\d{2}-.*\\.md$'
+);
 
 const SPEC_MESSAGE = `[numatic] A spec was just written. Before the human review gate, run the adversarial spec review:
 
     Skill(numatic:reviewing-specs) with the spec path
 
-Superpowers' own spec self-review is the author grading their own work and only checks form (placeholders, contradictions). numatic:reviewing-specs is a fresh-context subagent that checks content: scenario coverage, ambiguity, decomposition sanity. A spec flaw found now costs one edit; found after planning it invalidates the whole plan.
+Superpowers' own spec self-review is the author grading their own work minutes after writing it. numatic:reviewing-specs dispatches a fresh-context reviewer that audits the content against a shared scenario taxonomy: coverage, ambiguity, decomposition, testability. A spec flaw found now costs one edit; found after planning it invalidates the whole plan.
 
 Apply the findings, then present the reviewed spec to the human.`;
 
 const PLAN_MESSAGE = `[numatic] A plan was just written. Before offering the execution handoff, run the adversarial plan review:
 
-    Skill(numatic:reviewing-plans) with the plan path and its source spec
+    Skill(numatic:reviewing-plans) with the plan path, its source spec, and the spec's \`## Scenarios\` list
 
 This is the only step in the whole workflow that audits reuse. Task implementers are forbidden from restructuring code outside their task and task reviewers are forbidden from crawling the codebase, so if the plan says "create a new helper" when a 90%-suitable one already exists, nothing downstream will ever catch it. The planner has the full-codebase view. This is the last moment that view exists.
 
-The review also sets the cross-layer flag that decides whether numatic:tracing-flows runs later.`;
+The review also sets the \`Cross-layer:\` flag in the plan's Global Constraints, which decides whether numatic:tracing-flows runs later.`;
 
-const SDD_MESSAGE = `[numatic] Subagent-driven development is starting. The tail of this flow has two steps Superpowers does not know about. After the LAST task completes and BEFORE dispatching the final whole-branch review:
+const TAIL_MESSAGE = `[numatic] Plan execution is starting. The tail of this flow has two steps Superpowers does not know about. After the LAST task completes and BEFORE dispatching the final whole-branch review:
 
-  1. Skill(numatic:simplifying-code) - folds duplication introduced across tasks, including duplication against code that already existed. This is the only mutating step licensed to touch code outside the task boundary.
-  2. Skill(numatic:tracing-flows) - only if the plan review set the cross-layer flag. Traces every scenario through every layer, including layers this branch never modified.
+  1. Skill(numatic:simplifying-code) - folds duplication introduced across tasks, including duplication against code that already existed. This is a mutating step licensed to touch code outside the task boundary.
+  2. Skill(numatic:tracing-flows) - only if the plan's Global Constraints contain \`Cross-layer: yes\` (treat a missing line as yes). Traces every scenario through every layer, dispatches one fixer for what is mechanically fixable, and re-traces the affected seams.
 
-Order matters. Both run BEFORE the final review, so the final review covers their output and their findings join its single fix wave. Nothing mutates the branch after the review closes.`;
+Order matters. Both run BEFORE the final review, so the review covers their changes and triages their residual findings. Nothing mutates the branch after the review closes.`;
 
-const FINISH_MESSAGE = `[numatic] Merge gate reached. Confirm before finishing:
+// Skills whose invocation is recorded as a durable per-session fact.
+const RECORDED_SKILLS = new Set([
+  'numatic:reviewing-specs',
+  'numatic:reviewing-plans',
+  'numatic:simplifying-code',
+  'numatic:tracing-flows',
+  'superpowers:finishing-a-development-branch',
+]);
 
-  - Did numatic:simplifying-code run after the last task?
-  - If the plan review set the cross-layer flag, did numatic:tracing-flows run?
-  - Did the final whole-branch review happen AFTER both?
+// Skills that start a plan-execution tail (subagent or inline path).
+const TAIL_START_SKILLS = new Set([
+  'superpowers:subagent-driven-development',
+  'superpowers:executing-plans',
+]);
 
-If any answer is no, run the missing step now. Finishing the branch is the last point at which any of this is cheap.`;
+function dataDir(kind) {
+  const root = process.env.CLAUDE_PLUGIN_DATA;
+  return root ? path.join(root, kind) : null;
+}
 
-const SKILL_TRIGGERS = {
-  'superpowers:subagent-driven-development': ['sdd', SDD_MESSAGE],
-  'superpowers:finishing-a-development-branch': ['finish', FINISH_MESSAGE],
-};
+function safeKey(key) {
+  return key.replace(/[^A-Za-z0-9_.-]/g, '_');
+}
+
+/** Record that a skill ran this session. Idempotent; never throws. */
+function recordRan(sessionId, name) {
+  const dir = dataDir('ran');
+  if (!dir) return;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${sessionId}.${safeKey(name)}`), '');
+  } catch {
+    // Never let bookkeeping problems break the user's session.
+  }
+}
+
+function hasRun(sessionId, name) {
+  const dir = dataDir('ran');
+  if (!dir) return false;
+  try {
+    return fs.existsSync(path.join(dir, `${sessionId}.${safeKey(name)}`));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * One injection per session per subject. Returns true if this one is a repeat.
@@ -75,25 +120,84 @@ const SKILL_TRIGGERS = {
  * re-trigger numatic:reviewing-plans.
  */
 function alreadyFired(sessionId, key) {
-  const dataDir = process.env.CLAUDE_PLUGIN_DATA;
-  if (!dataDir) return false;
+  const dir = dataDir('fired');
+  if (!dir) return false;
 
-  const safeKey = key.replace(/[^A-Za-z0-9_.-]/g, '_');
-  const marker = path.join(dataDir, 'fired', `${sessionId}.${safeKey}`);
+  const marker = path.join(dir, `${sessionId}.${safeKey(key)}`);
   try {
-    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.mkdirSync(dir, { recursive: true });
     // wx makes create-if-absent atomic, so concurrent hooks cannot double-fire.
     fs.closeSync(fs.openSync(marker, 'wx'));
     return false;
   } catch (err) {
     if (err.code === 'EEXIST') return true;
-    // Never let bookkeeping problems break the user's session.
     return false;
   }
 }
 
-/** Returns [dedupeKey, message] or null. */
-function decide(payload) {
+/**
+ * The merge-gate message, generated from this session's records rather than asked of the
+ * model's memory. Returns null when there is nothing to say.
+ */
+function finishMessage(sessionId) {
+  const tailStarted = hasRun(sessionId, 'tail-started');
+  const simplified = hasRun(sessionId, 'numatic:simplifying-code');
+  const traced = hasRun(sessionId, 'numatic:tracing-flows');
+
+  if (!tailStarted) {
+    // No plan execution recorded in this session. The branch may still come from a
+    // reviewed plan run in an EARLIER session, so ask - but scoped, so a quick bugfix
+    // branch is explicitly told to ignore this.
+    return `[numatic] Merge gate reached. This session has no record of a plan execution. If this branch was built from a reviewed plan (possibly in an earlier session), confirm before finishing: numatic:simplifying-code ran after the last task, numatic:tracing-flows ran if the plan's Global Constraints say \`Cross-layer: yes\` (treat a missing line as yes), and the final whole-branch review ran AFTER both. If a required step is missing, run it now and then re-run the final review. If this branch was not built from a reviewed plan, ignore this message and finish normally.`;
+  }
+
+  if (simplified && traced) return null;
+
+  const missing = [];
+  if (!simplified) missing.push('numatic:simplifying-code');
+  if (!traced) {
+    missing.push(
+      "numatic:tracing-flows (required only if the plan's Global Constraints say `Cross-layer: yes`; treat a missing line as yes)"
+    );
+  }
+
+  return `[numatic] Merge gate reached. Session records show these steps did NOT run:
+
+  - ${missing.join('\n  - ')}
+
+For each step that was actually required: run it now, then RE-RUN the final whole-branch review before finishing - late changes must not ship unreviewed. If a listed step was genuinely not required, say why and proceed.`;
+}
+
+/**
+ * SessionStart(compact) re-injection: if a plan execution started and its tail has not
+ * completed, the instruction issued at execution start may have just been compacted away.
+ * Re-state only the pending part. Returns null when there is nothing pending.
+ */
+function compactMessage(sessionId) {
+  if (!hasRun(sessionId, 'tail-started')) return null;
+  if (hasRun(sessionId, 'superpowers:finishing-a-development-branch')) return null;
+
+  const simplified = hasRun(sessionId, 'numatic:simplifying-code');
+  const traced = hasRun(sessionId, 'numatic:tracing-flows');
+  if (simplified && traced) return null;
+
+  const pending = [];
+  if (!simplified) pending.push('Skill(numatic:simplifying-code)');
+  if (!traced) {
+    pending.push(
+      "Skill(numatic:tracing-flows) - only if the plan's Global Constraints say `Cross-layer: yes` (treat a missing line as yes)"
+    );
+  }
+
+  return `[numatic] A plan execution started in this session and its tail is still pending. After the LAST task completes and BEFORE the final whole-branch review:
+
+  - ${pending.join('\n  - ')}
+
+Both run before the final review so the review covers their changes. Nothing mutates the branch after the review closes.`;
+}
+
+/** Returns [dedupeKey, message] or null. Message may be null (record-only, no injection). */
+function decide(payload, sessionId) {
   const tool = payload.tool_name;
   const toolInput = payload.tool_input || {};
 
@@ -105,10 +209,23 @@ function decide(payload) {
   }
 
   if (tool === 'Skill') {
-    return SKILL_TRIGGERS[String(toolInput.skill || '')] || null;
+    const skill = String(toolInput.skill || '');
+    if (TAIL_START_SKILLS.has(skill)) return ['tail', TAIL_MESSAGE];
+    if (skill === 'superpowers:finishing-a-development-branch') {
+      return ['finish', finishMessage(sessionId)];
+    }
+    return null;
   }
 
   return null;
+}
+
+function emit(hookEventName, message) {
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName, additionalContext: message },
+    })
+  );
 }
 
 function main() {
@@ -126,20 +243,29 @@ function main() {
     return;
   }
 
-  const decision = decide(payload);
+  const sessionId = payload.session_id || 'nosession';
+
+  if (payload.hook_event_name === 'SessionStart') {
+    const message = compactMessage(sessionId);
+    if (message) emit('SessionStart', message);
+    return;
+  }
+
+  // PostToolUse. Record durable facts first - recording is unconditional, deduping is not.
+  if (payload.tool_name === 'Skill') {
+    const skill = String((payload.tool_input || {}).skill || '');
+    if (RECORDED_SKILLS.has(skill)) recordRan(sessionId, skill);
+    if (TAIL_START_SKILLS.has(skill)) recordRan(sessionId, 'tail-started');
+  }
+
+  const decision = decide(payload, sessionId);
   if (!decision) return;
 
   const [key, message] = decision;
-  if (alreadyFired(payload.session_id || 'nosession', key)) return;
+  if (!message) return;
+  if (alreadyFired(sessionId, key)) return;
 
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PostToolUse',
-        additionalContext: message,
-      },
-    })
-  );
+  emit('PostToolUse', message);
 }
 
 // A crashing hook must never take the session down with it.

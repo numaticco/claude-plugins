@@ -1,9 +1,22 @@
 {
-  "description": "Injects the Numatic flow overlay at the exact joints of the Superpowers workflow. Silent in sessions that never touch that workflow.",
+  "description": "Injects the Numatic flow overlay at the exact joints of the Superpowers workflow, and re-states pending work after a compaction. Silent in sessions that never touch that workflow.",
   "hooks": {
     "PostToolUse": [
       {
         "matcher": "Write|Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/flow-overlay.js\"",
+            "shell": "bash",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
         "hooks": [
           {
             "type": "command",

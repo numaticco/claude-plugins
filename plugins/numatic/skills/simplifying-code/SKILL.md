@@ -53,8 +53,10 @@ codebase; the final reviewer sees only the diff, where the pre-existing original
 appear. `numatic:reviewing-plans` is supposed to catch this before a line is written. When
 it misses one, this is the only remaining chance.
 
-**This is the only step in the entire workflow licensed to modify code outside the task
-boundary.** Use it deliberately and account for every such change.
+**This is one of only two steps in the workflow licensed to modify code outside the task
+boundary** - the other is the fix wave in `numatic:tracing-flows`, for the same reason: a
+gap whose two halves live on opposite sides of the diff cannot be closed from inside it.
+Use the licence deliberately and account for every such change.
 
 ## Process
 
@@ -152,8 +154,17 @@ Tests: <command, result, pristine yes/no>
 The "outside the branch diff" section is the important one. Hand it to the final reviewer
 explicitly, because those changes are the ones its diff-scoped view will not show it.
 
-Then dispatch the final whole-branch review, or `numatic:tracing-flows` first if the plan
-review set the cross-layer flag.
+Then decide what runs next by **reading the plan's Global Constraints for the
+`Cross-layer:` line**, which `numatic:reviewing-plans` wrote there so it would survive
+compaction. Do not rely on remembering the verdict.
+
+- `Cross-layer: yes`, or **no line at all** -> run `numatic:tracing-flows` next. It traces
+  the flow, fixes what is mechanically fixable, and re-traces, all before the review.
+- `Cross-layer: no` -> dispatch the final whole-branch review directly.
+
+Defaulting a missing flag to `yes` is deliberate: it usually means the plan review never
+ran, and silently skipping the trace in that case is exactly the failure the flag exists to
+prevent.
 
 ## Red flags
 

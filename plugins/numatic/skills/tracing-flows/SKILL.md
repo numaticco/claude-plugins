@@ -15,8 +15,9 @@ before anything breaks.
 confirm each is handled, and report the whole tree of gaps in one pass, not the first leaf.
 
 This skill is **static-only** (read and reason). It does not run the app or the tests -
-runtime confirmation belongs to `/verify` and `superpowers:test-driven-development`. It
-composes `superpowers:dispatching-parallel-agents` for the fan-out.
+runtime confirmation belongs to your project's own verification command and
+`superpowers:test-driven-development`. It composes
+`superpowers:dispatching-parallel-agents` for the fan-out.
 
 ## Why it finds things code review does not
 
@@ -35,13 +36,15 @@ after a clean code review still finds real defects. That is expected, not a revi
 ## When to Use
 
 - **In the SDD flow:** automatically, after `numatic:simplifying-code` and before the
-  final whole-branch review, when `numatic:reviewing-plans` set `Cross-layer: yes`.
+  final whole-branch review, when the plan's **Global Constraints** contain
+  `Cross-layer: yes`. Read that line from the plan file - `numatic:reviewing-plans` wrote
+  it there so it survives compaction. Treat a missing line as `yes`.
 - **Standalone:** before shipping any feature, after a change spanning layers, or when
   auditing a flow you did not fully trust.
 
 **When NOT to use:**
 - You have a known bug or symptom -> `superpowers:systematic-debugging`.
-- You want runtime confirmation -> `/verify`.
+- You want runtime confirmation -> your project's test or verification command.
 - You are judging a diff's quality -> `superpowers:requesting-code-review`.
 
 ## Arguments and scope resolution
@@ -63,7 +66,7 @@ Resolve **what to trace** in this precedence:
 Always emit one crisp **"Flow under trace"** statement first: entry points, the user or
 data journey, and the expected end state. Every subagent is anchored to it.
 
-## The Four Phases
+## The Five Phases
 
 ### Phase A - Resolve scope
 
@@ -81,11 +84,15 @@ between layers).
 
 **Scenario list** - and here the SDD path differs from standalone:
 
-- **In the SDD flow, do not re-derive scenarios.** Take the list from the spec and the
-  plan review. Those scenarios were agreed with the human and mapped to tasks. Your job is
-  to verify each one actually landed in code at every layer it passes through. Re-deriving
-  a different list means you verify scenarios nobody planned while missing ones they did.
-  Add newly discovered scenarios to the list - do not silently replace it.
+- **In the SDD flow, do not re-derive scenarios.** Read the numbered list under the spec's
+  `## Scenarios` heading, written there by `numatic:reviewing-specs`. Read it from the spec
+  file - by the time this skill runs, the conversation that agreed those scenarios has
+  usually been compacted away. Those scenarios were agreed with the human and mapped to
+  tasks, so your job is to verify each one actually landed in code at every layer it passes
+  through. Re-deriving a different list means you verify scenarios nobody planned while
+  missing ones they did. Add newly discovered scenarios to the list - do not silently
+  replace it. If the spec genuinely has no `## Scenarios` section, say so in the report,
+  then derive from the taxonomy.
 - **Standalone**, derive the list from
   `${CLAUDE_PLUGIN_ROOT}/references/scenario-taxonomy.md`, plus flow-specific classes.
 
@@ -111,8 +118,42 @@ Scale the agent count to (#seams + #scenario-clusters). Prompt templates below.
 2. Skeptic pass to cut false positives (full pass in `thorough`, scaled down in `quick`).
 3. Rank Critical / Important / Minor.
 4. Emit the chat summary and write the full record (see Output).
-5. Append a short "runtime checks worth running via `/verify`" list for the riskiest
-   scenarios found.
+5. Append a short list of runtime checks worth running for the riskiest scenarios found -
+   the trace is static, so anything that depends on real data or real timing is named here
+   rather than claimed as verified.
+
+### Phase E - Fix wave
+
+This skill fixes what it finds. See "Who fixes these findings" below for why.
+
+**1. Triage.** Split the findings:
+
+- **Mechanical** - the spec says what should happen, or one side of a seam defines the
+  contract and the other is wrong. A stranger with the flow map could execute it.
+- **Needs human decision** - the finding describes behavior nothing specifies. Fixing it
+  means inventing product behavior. These never reach a fixer.
+
+**2. Dispatch one `numatic:flow-fixer`** with the complete mechanical findings list plus
+the flow map. One fixer, all findings - not one fixer per finding. Per-finding fixers each
+rebuild context and re-run the suite, and a fix wave that costs more than the trace defeats
+the point.
+
+The fixer is licensed to edit layers outside the branch diff, and returns a list of every
+such change. Keep that list; the final review needs it.
+
+**3. Scoped re-trace.** Re-run only the affected seams and scenario clusters, plus anything
+downstream of a fixed break - `contingent` findings become real once their blocker is fixed.
+This is the `--resume` mechanism, invoked here rather than waiting for a user.
+
+**A diff review cannot verify a seam fix.** A seam has two sides and a diff shows one; that
+is the whole reason this skill is flow-scoped. Only a re-trace verifies the fix, which is
+why the re-check here is a re-trace and not a code review.
+
+**4. One fix wave, one re-trace.** Anything still open after that goes to your human
+partner, together with the `needs human decision` pile. Do not loop.
+
+**5. Then the final review runs**, and covers the fixer's changes for free - the same reason
+`numatic:simplifying-code` runs before it and not after.
 
 ## Exhaustiveness - never stop at the first failure
 
@@ -161,9 +202,9 @@ opens a new seam. The report file is the **state carrier** between iterations. O
 Loop: trace -> user reviews and fixes -> `--resume` -> repeat until a clean pass. Do not
 auto-loop; resume is user-driven.
 
-**In the SDD flow, `--resume` is usually unnecessary.** Findings go into the final review's
-single fix wave, and that review verifies its own fixes. Use resume when a finding is
-severe enough to warrant a dedicated round before review.
+**In the SDD flow, Phase E already runs this mechanism once**, automatically, to verify its
+own fix wave. Manual `--resume` is for the standalone loop, or for a second round the human
+explicitly asks for after reviewing what Phase E left open.
 
 ## Findings schema
 
@@ -236,23 +277,45 @@ without re-investigating. Group by severity.
   repo does not ignore `.superpowers/`, write to the scratchpad instead and hand the
   reviewer the path.
 
-Close with the `/verify` runtime-check pointer.
+Close with the runtime-check list: the checks worth running against a real environment for
+the riskiest scenarios found. This skill is static, so anything depending on real data or
+real timing is named here, not claimed as verified.
 
-## Handing findings to the final review
+## Who fixes these findings
 
-In the SDD flow this skill does not fix anything. Findings join the final whole-branch
-review's single fix wave, which keeps one gate responsible for everything that changes
-before merge.
+This skill owns its fix wave (Phase E). Deferring the fixes to the final whole-branch review
+was tried and is wrong, for four reasons that compound:
 
-When dispatching the final review, tell it explicitly:
+1. **The handoff is voluntary.** The final reviewer's prompt hands it a git range and
+   diff-shaped checks. Asking it to also adopt an external flow-scoped findings file fights
+   its own template, and nothing reconciles what was handed over against what comes back. A
+   dropped finding just disappears.
+2. **The fixer loses the map.** Superpowers dispatches one fixer with the reviewer's
+   findings list. That fixer never sees the flow map, so it fixes "the security rule does
+   not know about field X" from one side of a seam.
+3. **The verification is structurally blind.** The scoped re-review reads the fix range
+   diff. A seam fix cannot be verified by reading one side of the seam, and a diff is one
+   side by definition. Only a re-trace can verify it.
+4. **The invariant it protected was already gone.** "One gate owns all mutations" sounds
+   right, but `numatic:simplifying-code` already mutates before the final review and the
+   review covers it. Deferring here was inconsistency dressed up as discipline.
 
-> A flow trace ran before this review. Read `<path to flow-trace.md>`. Its findings are
-> part of what you are reviewing. Some concern files outside your diff range - that is
-> expected, because the trace is flow-scoped and you are diff-scoped. Treat its Critical
-> and Important findings as your own unless you can show they are wrong.
+The real invariant is narrower and this skill keeps it: **nothing mutates the branch after
+the final review closes.** Fixing before the review satisfies that, and the review then
+covers the fixes for free.
 
-Without that instruction the reviewer will disregard anything outside its diff, and the
-findings die there.
+## Handing the record to the final review
+
+The final review still receives the trace, now as context and residual triage rather than as
+the fix mechanism. When dispatching it, say:
+
+> A flow trace ran before this review and its mechanical findings were fixed. Read
+> `<path to flow-trace.md>` for the findings and `<fixer's out-of-diff list>` for changes
+> outside your diff range. Those changes are real and unreviewed - the trace is flow-scoped
+> and you are diff-scoped, so your git range does not contain them. Review them as part of
+> this branch, and triage the residual findings the trace could not fix.
+
+Without that, the reviewer never learns that files outside its range were modified.
 
 ## Effort scaling
 
@@ -263,11 +326,13 @@ findings die there.
 ## Common mistakes
 
 - **Stopping at the first blocker** - the number one failure. Mechanism 1 exists for this.
-- **Re-deriving scenarios in the SDD flow** - use the spec's list, then extend it.
+- **Re-deriving scenarios in the SDD flow** - read the spec's `## Scenarios` list from the
+  file, then extend it. Do not trust the conversation to still hold it.
 - **Assuming the stack** - discover layers per project; do not hard-code names.
 - **Reporting a gap with no evidence** - every finding cites what you read (file:line).
 - **Auditing only changed code** - a flow includes unchanged layers a change now depends on.
-- **Trying to run things** - this skill is static; hand runtime to `/verify`.
+- **Trying to run things** - this skill is static; name the runtime checks and hand them to
+  your project's verification command.
 - **Committing the report** - it is scratch, in the scratchpad or the SDD workspace.
 - **Inventing a severity scale** - subagents drifting to HIGH/MEDIUM/LOW forces the main
   agent to normalize labels during synthesis. Enforce the exact vocabulary in every prompt.
