@@ -3,15 +3,15 @@
  * Inject the Numatic flow overlay at the joints of the Superpowers workflow.
  *
  * Runs as:
- *   - a PostToolUse hook matched on `Write|Skill`. Claude Code matches hooks on the
+ *   - a PostToolUse hook matched on `Write|Edit|Skill`. Claude Code matches hooks on the
  *     TOOL NAME only (verified empirically - a matcher naming a skill never fires), so all
  *     real filtering happens here.
  *   - a SessionStart hook matched on `compact`, which re-injects pending tail state that
  *     compaction would otherwise erase.
  *
  * Injection points:
- *   Write <spec path>                                 -> run numatic:reviewing-specs
- *   Write <plan path>                                 -> run numatic:reviewing-plans
+ *   Write|Edit <spec path>                             -> run numatic:reviewing-specs
+ *   Write|Edit <plan path>                             -> run numatic:reviewing-plans
  *   Skill superpowers:subagent-driven-development     -> plan the tail of the flow
  *   Skill superpowers:executing-plans                 -> same tail (inline execution path)
  *   Skill superpowers:finishing-a-development-branch  -> guard the merge gate, from records
@@ -52,7 +52,9 @@ const SPEC_MESSAGE = `[numatic] A spec was just written. Before the human review
 
 Superpowers' own spec self-review is the author grading their own work minutes after writing it. numatic:reviewing-specs dispatches a fresh-context reviewer that audits the content against a shared scenario taxonomy: coverage, ambiguity, decomposition, testability. A spec flaw found now costs one edit; found after planning it invalidates the whole plan.
 
-Apply the findings, then present the reviewed spec to the human.`;
+Apply the findings, then present the reviewed spec to the human.
+
+If this change is small enough that numatic:reviewing-specs' own "when not to use" section applies (e.g. single-layer, no cross-cutting scenarios to miss), say so and skip the review instead of running it anyway.`;
 
 const PLAN_MESSAGE = `[numatic] A plan was just written. Before offering the execution handoff, run the adversarial plan review:
 
@@ -60,7 +62,9 @@ const PLAN_MESSAGE = `[numatic] A plan was just written. Before offering the exe
 
 This is the only step in the whole workflow that audits reuse. Task implementers are forbidden from restructuring code outside their task and task reviewers are forbidden from crawling the codebase, so if the plan says "create a new helper" when a 90%-suitable one already exists, nothing downstream will ever catch it. The planner has the full-codebase view. This is the last moment that view exists.
 
-The review also sets the \`Cross-layer:\` flag in the plan's Global Constraints, which decides whether numatic:tracing-flows runs later.`;
+The review also sets the \`Cross-layer:\` flag in the plan's Global Constraints, which decides whether numatic:tracing-flows runs later.
+
+If this change is small enough that numatic:reviewing-plans' own "when not to use" section applies, say so and skip the review instead of running it anyway.`;
 
 const TAIL_MESSAGE = `[numatic] Plan execution is starting. The tail of this flow has two steps Superpowers does not know about. After the LAST task completes and BEFORE dispatching the final whole-branch review:
 
@@ -90,7 +94,7 @@ const TAIL_START_SKILLS = new Set([
  * CLAUDE_PLUGIN_DATA is the right home when Claude Code provides it. When it does not, a
  * null here would silently disable every record and every check - and because the merge
  * gate is built out of those records, an unset variable would turn the plugin's only
- * enforcement point off while everything else still looked like it worked. Fail closed
+ * persistent-advisory point off while everything else still looked like it worked. Fail closed
  * instead: fall back to the temp dir.
  *
  * Every marker key is session-scoped (`<sessionId>.<name>`) and nothing reads a prior
@@ -155,10 +159,12 @@ function alreadyFired(sessionId, key) {
  *   - The advisory branch asks a question the records cannot answer. Nothing it says will
  *     ever make it stop firing, because its premise is the ABSENCE of state. It gets a
  *     dedupe key, so a bugfix branch that was already told to ignore it is not told twice.
- *   - The enforcement branch names steps that demonstrably did not run. It gets a null key
- *     - never deduped - because the agent's response to a block IS to retry, and a gate
- *     that only blocks the first attempt does not block. It self-silences instead: once
- *     the missing steps run, their markers exist and this function returns null.
+ *   - The persistent-advisory branch names steps that demonstrably did not run. It gets a
+ *     null key - never deduped - because this hook cannot block the tool call (PostToolUse
+ *     only injects additionalContext), so the only way to keep the agent's attention on a
+ *     real gap is to repeat the message on every retry instead of silencing after the first.
+ *     It self-silences instead once the gap closes: when the missing steps run, their
+ *     markers exist and this function returns null.
  *
  * The self-silencing has one hole, and it is deliberate rather than fixed. Under
  * `Cross-layer: no` the plan does not require `numatic:tracing-flows`, so its marker never
@@ -191,7 +197,7 @@ function finishMessage(sessionId) {
     );
   }
 
-  // null key: enforcement, never deduped. See the note on this function.
+  // null key: persistent advisory, never deduped. See the note on this function.
   return [
     null,
     `[numatic] Merge gate reached. Session records show these steps did NOT run:
@@ -232,13 +238,14 @@ Both run before the final review so the review covers their changes. Nothing mut
 
 /**
  * Returns [dedupeKey, message] or null (nothing to inject). A dedupeKey of null means this
- * message is enforcement rather than advice and must fire on every occurrence.
+ * message is a persistent advisory rather than one-shot advice, and must fire on every
+ * occurrence - it cannot block the tool call, so repetition is the only pressure it has.
  */
 function decide(payload, sessionId) {
   const tool = payload.tool_name;
   const toolInput = payload.tool_input || {};
 
-  if (tool === 'Write') {
+  if (tool === 'Write' || tool === 'Edit') {
     const posix = String(toolInput.file_path || '').replace(/\\/g, '/');
     if (SPEC_PATTERN.test(posix)) return [`spec:${path.posix.basename(posix)}`, SPEC_MESSAGE];
     if (PLAN_PATTERN.test(posix)) return [`plan:${path.posix.basename(posix)}`, PLAN_MESSAGE];
@@ -249,7 +256,8 @@ function decide(payload, sessionId) {
     const skill = String(toolInput.skill || '');
     if (TAIL_START_SKILLS.has(skill)) return ['tail', TAIL_MESSAGE];
     if (skill === 'superpowers:finishing-a-development-branch') {
-      // finishMessage picks its own dedupe key: advisory is deduped, enforcement is not.
+      // finishMessage picks its own dedupe key: one-shot advice is deduped, the persistent
+      // advisory is not.
       return finishMessage(sessionId);
     }
     return null;
@@ -301,8 +309,9 @@ function main() {
 
   const [key, message] = decision;
   if (!message) return;
-  // A null key opts out of dedupe: the message enforces rather than advises, and it
-  // self-silences by not being generated once the thing it enforces has happened.
+  // A null key opts out of dedupe: the message is a persistent advisory rather than
+  // one-shot advice, and it self-silences by not being generated once the gap it names
+  // has closed.
   if (key !== null && alreadyFired(sessionId, key)) return;
 
   emit('PostToolUse', message);

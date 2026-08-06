@@ -10,7 +10,7 @@
       "name": "numatic",
       "source": "./plugins/numatic",
       "description": "Adversarial spec and plan review, reuse auditing, simplification, and end-to-end flow tracing layered onto the Superpowers workflow",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "author": {
         "name": "Igor Sadovskiy",
         "email": "tools@numatic.co"
