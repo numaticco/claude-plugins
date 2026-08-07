@@ -172,6 +172,11 @@ Runs after the last task, before the final review. Folds duplication introduced 
 tasks, and duplication against code that already existed - the backstop for gap 2 when the
 plan review missed one. Also removes dead code, YAGNI leftovers, and needless indirection.
 
+The whole pass - find, judge, apply, verify - runs inside one dispatched
+`numatic:code-simplifier` agent; the orchestrator never loads the branch diff, which is the
+largest single read in the workflow. On a large diff the agent fans out per-category finder
+subagents itself and keeps the judging in one context.
+
 This is one of two steps in the workflow licensed to modify code outside the task boundary,
 so it lists every out-of-diff change it made and hands that list to the final reviewer,
 whose diff-scoped view would not otherwise show it.
@@ -205,6 +210,7 @@ shows up as reviewers inventing their own severity scales.
 | `numatic:plan-reviewer` | Reviews the plan and runs the reuse audit. Read-only plus search, capable model. |
 | `numatic:plan-fixer` | Applies plan-review findings. Edits the plan document only, never source. |
 | `numatic:flow-fixer` | Applies flow-trace findings. Licensed to edit outside the branch diff, and reports every such change. |
+| `numatic:code-simplifier` | Owns the whole simplification pass: find, judge, apply, verify, ledger. Licensed to edit outside the branch diff, and can fan out finder subagents on large diffs. |
 
 Dispatch briefs carry paths and project context only. The contract lives in the agent.
 
@@ -287,7 +293,8 @@ claude-plugins/
 │       │   ├── spec-reviewer.md
 │       │   ├── plan-reviewer.md
 │       │   ├── plan-fixer.md
-│       │   └── flow-fixer.md
+│       │   ├── flow-fixer.md
+│       │   └── code-simplifier.md
 │       ├── hooks/
 │       │   ├── hooks.json
 │       │   └── flow-overlay.js   # Node: the one runtime Claude Code guarantees

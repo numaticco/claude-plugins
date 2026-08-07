@@ -201,6 +201,35 @@ The real invariant is narrower, and every skill keeps it: **nothing mutates the 
 the final review closes.** Fixing before the review satisfies that, and the review covers the
 fixes for free.
 
+### simplifying-code dispatches one agent that owns find, judge, AND apply
+
+Until 0.4.0 this was the outlier: the orchestrator read the whole branch diff, judged the
+candidates, and applied the edits itself. That contradicted the plugin's own cost rule
+(below) at the worst possible moment - the whole-branch diff is the single largest read in
+the workflow, and it landed in the session that still had the flow trace, the final review,
+and the finishing ahead of it.
+
+The `numatic:code-simplifier` agent now owns the entire pass, and the shape differs from
+both sibling loops on purpose:
+
+- **No separate fixer, no re-check dispatch.** The review/apply/re-check split exists to
+  put a stranger between a finding and its application. Here the independent check already
+  exists downstream: the final whole-branch review runs immediately after and reads the
+  simplified code. This is the same "the checker is the very next step" argument that lets
+  `reviewing-specs` apply its own findings - splitting find from apply would just pay the
+  diff twice.
+- **Judging can leave the main session** because, unlike a spec fix, it requires no intent
+  that lives only in the author's head. Everything the judgment needs - spec, plan,
+  progress ledger - is file-borne state. Anything the orchestrator knows that the agent
+  cannot read is, by the files-not-chat rule, a durability bug to fix at the source.
+- **The agent sizes its own fan-out.** Subagents can nest (three levels deep before the
+  Agent tool is withheld), so on a large diff the simplifier dispatches per-category
+  finder subagents itself and keeps the cross-category judging in one context. The sizing
+  decision lives next to the diff instead of forcing the controller to stat it.
+
+What stays in the main session is exactly the routing: pointing the final review at the
+ledger's out-of-diff list, forwarding deferred bug reports, and the `Cross-layer:` branch.
+
 ### Reviewers are plugin agents, not pasted prompts
 
 `agents/spec-reviewer.md`, `agents/plan-reviewer.md`, `agents/plan-fixer.md`, and
@@ -285,7 +314,8 @@ When upgrading Superpowers, check those five strings first.
   wave is one fixer for all findings, never one per finding: per-finding fixers each rebuild
   context and re-run the suite.
 - **simplifying-code** - always runs (it is the Gap 2 backstop) but is scoped to the branch
-  diff plus prior art for what the branch added.
+  diff plus prior art for what the branch added. The whole pass runs inside the dispatched
+  `code-simplifier`; the orchestrator never reads the diff.
 - **Main-session context is the scarce resource, not subagent tokens.** Subagent contexts are
   disposable; the orchestrator's context has to survive the whole flow. Every choice to
   dispatch rather than inline is spending the cheap currency to protect the expensive one.

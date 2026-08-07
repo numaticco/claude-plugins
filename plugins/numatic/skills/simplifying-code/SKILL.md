@@ -1,6 +1,6 @@
 ---
 name: simplifying-code
-description: Use after the last implementation task completes and BEFORE the final whole-branch code review, to fold duplication, delete dead code, and remove YAGNI leftovers that accumulated across tasks built in isolation. Also the backstop for code that duplicates utilities the repo already had. Triggers on "simplify this branch", "clean up before review", "reduce duplication", or the end of a subagent-driven-development run.
+description: Use after the last implementation task completes and BEFORE the final whole-branch code review, to fold duplication, delete dead code, and remove YAGNI leftovers that accumulated across tasks built in isolation. Also the backstop for code that duplicates utilities the repo already had. Dispatches the numatic:code-simplifier agent; the orchestrator never reads the branch diff. Triggers on "simplify this branch", "clean up before review", "reduce duplication", or the end of a subagent-driven-development run.
 ---
 
 # Simplifying Code
@@ -35,128 +35,62 @@ before the final review, never after. Two reasons:
 **When NOT to use:**
 - Mid-run, between tasks. Duplication is not visible until the tasks that create it exist.
 - After the final review has already approved the branch. Re-review or leave it.
-- To hunt bugs. That is the final review's job, and it runs next. If you find one, report
-  it - do not fix it here, and do not go looking.
+- To hunt bugs. That is the final review's job, and it runs next.
 
-## Scope
+## You are the controller, not the simplifier
 
-**Primary scope: the branch diff.** Everything this branch added or changed, taken as a
-whole for the first time.
+You dispatch one **`numatic:code-simplifier`** agent and route what comes back. You do not
+read the branch diff, you do not judge candidates, and you do not apply edits. The whole
+pass - find, judge, apply, verify, ledger - happens inside the agent's disposable context.
 
-**Secondary scope, and this one is deliberate: near-duplicates in code the branch did NOT
-touch.** For each utility, helper, or type the branch introduced, check whether the repo
-already had something equivalent.
+The reason is the same one that shapes every loop in this plugin: your context has to
+survive the rest of the flow - the flow trace, the final review, the finishing - and the
+whole-branch diff is the single largest read in the workflow. Everything the judgment
+needs (spec, plan, progress ledger) lives in files the agent can read; anything you know
+that it cannot is, by this plugin's own rules, state that should have been written down.
 
-This makes the skill the last line of defense for a gap that opens at plan time. Task
-implementers cannot look outside their task; task reviewers are told not to crawl the
-codebase; the final reviewer sees only the diff, where the pre-existing original does not
-appear. `numatic:reviewing-plans` is supposed to catch this before a line is written. When
-it misses one, this is the only remaining chance.
+The agent sizes the work itself: on a large diff it fans out finder subagents internally,
+one per category, and keeps the judging in one place. That decision belongs next to the
+diff, not with you.
 
-**This is one of only two steps in the workflow licensed to modify code outside the task
-boundary** - the other is the fix wave in `numatic:tracing-flows`, for the same reason: a
-gap whose two halves live on opposite sides of the diff cannot be closed from inside it.
-Use the licence deliberately and account for every such change.
+### Step 1 - Gather the inputs
 
-## Process
+No diff reading. Collect:
 
-### Step 1 - Establish the diff
+1. **Base and head refs** for the branch (`main` or `master` unless the run says otherwise).
+2. **Plan and spec paths**, if this is an SDD run.
+3. **The progress ledger path** - `.superpowers/sdd/<plan-basename>/progress.md` - if the
+   workspace exists. The agent appends its ledger entry there.
 
-Get the branch's base and head. Read the whole diff at once. You are looking at code that
-until now has only ever been reviewed in task-sized slices.
+### Step 2 - Dispatch the simplifier
 
-### Step 2 - Find the candidates
+Dispatch **`numatic:code-simplifier`** with those refs and paths. Its system prompt carries
+the full contract - scope, categories, judgment tests, the out-of-diff licence, the test
+discipline, the ledger format. Do not restate any of it in the dispatch; the brief is refs,
+paths, and project context only.
 
-Work through these categories in order. Fan out to parallel subagents when the diff is
-large; each returns candidates, and you decide.
+One simplifier, one pass. There is no re-check dispatch: the final whole-branch review runs
+next and reads the simplified code, so the independent check already exists downstream.
 
-**1. Duplication inside the diff.** The same logic implemented more than once across
-tasks. Near-identical functions, parallel branches doing the same transformation,
-copy-pasted blocks with one value changed.
+### Step 3 - Relay the report
 
-**2. Duplication against existing code.** For each new utility or helper, search the repo
-for prior art. Same discipline as the plan reuse audit: search by name, by synonym, by
-shape, by convention. A hit here means folding new code into the existing function and
-updating every caller.
+The agent returns a five-section report (applied / outside-the-diff changes / skipped /
+deferred / tests). Surface it in chat. Two sections need routing:
 
-**3. Dead code.** Anything built and never wired up: unused exports, unreferenced
-branches, parameters nobody passes, config nobody reads. Common when a task's design
-changed partway through implementation.
+- **Files changed outside the branch diff** - when you later dispatch the final review,
+  point it at the ledger entry in `progress.md` explicitly. The reviewer is diff-scoped
+  and its git range does not contain those changes.
+- **Deferred to final review** - suspected bugs and behavior questions the simplifier
+  found but correctly did not touch. Same routing: name them to the final review.
 
-**4. YAGNI leftovers.** Generality nothing uses. An options object with one caller passing
-one shape. An interface with a single implementation and no second one planned. An
-abstraction introduced for a case the spec explicitly excluded.
+If the agent reports a failed test suite it could not resolve by reverting, stop and put
+that in front of your human partner before anything else runs.
 
-**5. Abstraction altitude.** Indirection that costs more than it saves - a wrapper that
-only forwards, a factory producing one type, a layer you have to read through to
-understand anything.
+### Step 4 - Decide what runs next
 
-**6. Naming.** Names that describe mechanism instead of purpose, names that drifted from
-what the code ended up doing, and inconsistent vocabulary for one concept across tasks.
-
-### Step 3 - Judge before you cut
-
-Not every candidate should be acted on. Apply these tests:
-
-- **Is the duplication real, or do the two sites just look alike?** Two functions with
-  identical bodies that answer to different requirements will diverge later. Merging them
-  creates a coupling that the next change has to undo. Similar code is not duplicate code
-  unless it has one reason to change.
-- **Does folding make the surviving function worse?** If absorbing the new case means a
-  boolean parameter that switches behavior, or unrelated concerns in one body, keep them
-  separate and say why.
-- **Is the "dead" code actually dead?** Check for dynamic references, string-keyed
-  lookups, framework conventions, and public API surface consumers depend on.
-- **Would this change behavior?** If yes, it is not simplification. Route it to the final
-  review as a finding.
-
-Skipping a candidate for a stated reason is a good outcome. Record it.
-
-### Step 4 - Apply
-
-Make the changes. Keep them mechanical and behavior-preserving.
-
-When folding new code into a pre-existing function, update **every** call site, including
-ones this branch never touched, and keep a list. That list is not optional bookkeeping -
-it is what lets the final reviewer evaluate a change whose other half is outside the diff
-it was given.
-
-Never weaken a test to make a simplification pass. If a test fails, the simplification is
-wrong or the test caught a real behavior change. Both mean stop.
-
-### Step 5 - Verify
-
-Run the full test suite. It must pass, and the output must be pristine - no new warnings,
-no new noise.
-
-If a test fails, revert that specific simplification rather than fixing forward. You are
-between the last task and the final review; leaving a half-applied refactor here is worse
-than leaving the duplication.
-
-### Step 6 - Record and hand off
-
-Append a ledger entry to the SDD workspace if one exists
-(`.superpowers/sdd/<plan-basename>/progress.md`), then report. The entry must include:
-
-```
-## Simplification pass
-Applied:
-  - <what, where, why>
-Files changed outside the branch diff:
-  - <file:line> - <which pre-existing function absorbed new behavior, and which callers moved>
-Skipped:
-  - <candidate> - <why leaving it is correct>
-Deferred to final review:
-  - <suspected bugs or behavior questions found but not acted on>
-Tests: <command, result, pristine yes/no>
-```
-
-The "outside the branch diff" section is the important one. Hand it to the final reviewer
-explicitly, because those changes are the ones its diff-scoped view will not show it.
-
-Then decide what runs next by **reading the plan's Global Constraints for the
-`Cross-layer:` line**, which `numatic:reviewing-plans` wrote there so it would survive
-compaction. Do not rely on remembering the verdict.
+Read the plan's Global Constraints for the `Cross-layer:` line, which
+`numatic:reviewing-plans` wrote there so it would survive compaction. Do not rely on
+remembering the verdict.
 
 - `Cross-layer: yes`, or **no line at all** -> run `numatic:tracing-flows` next. It traces
   the flow, fixes what is mechanically fixable, and re-traces, all before the review.
@@ -166,24 +100,30 @@ Defaulting a missing flag to `yes` is deliberate: it usually means the plan revi
 ran, and silently skipping the trace in that case is exactly the failure the flag exists to
 prevent.
 
+## What the simplifier does
+
+The contract lives in `agents/code-simplifier.md` and only there - restating it here is how
+the two copies drift. In one line each: duplication inside the diff, duplication against
+pre-existing code (the gap-2 backstop, and one of only two licensed out-of-diff mutations
+in the workflow - the other is the fix wave in `numatic:tracing-flows`), dead code, YAGNI
+leftovers, abstraction altitude, and naming - each candidate judged before it is cut, every
+change behavior-preserving, the full suite run before it returns.
+
 ## Red flags
 
 | Thought | Reality |
 |---|---|
 | "I'll simplify after the review passes" | Then it ships unreviewed. The slot is before review, always. |
-| "This looks like a bug, let me fix it" | Report it, do not fix it. The review runs next and is built for it. |
-| "These two functions look similar, merge them" | Similar is not duplicate. Merge only what has one reason to change. |
-| "The test broke, I'll adjust the test" | The test caught you. Revert the simplification. |
-| "I should check the whole codebase for cleanup opportunities" | Scope is this branch, plus prior art for what this branch added. Not a repo-wide refactor. |
-| "Folding into the old function means touching files outside the diff" | Yes. That is licensed here, and only here. List every one. |
+| "I'll read the diff and do this myself, dispatching is overhead" | The whole-branch diff is the largest read in the workflow, and your context still has the trace, the review, and the finishing ahead of it. Dispatch it. |
+| "The agent should check back before applying" | The final review is the check, and it runs next. A round-trip here loads the candidates into the context the dispatch exists to protect. |
 | "The branch is small, skip this" | Small branches still duplicate against existing code. That check is cheap. |
+| "I'll summarize the out-of-diff list for the reviewer" | Point the reviewer at the ledger in `progress.md` instead. A summary in chat does not survive compaction; the file does. |
 
 ## Output
 
-- What was simplified, grouped by category, one line each.
-- Changes outside the branch diff, called out separately with their call sites.
-- What was skipped and why.
-- Anything deferred to the final review.
-- Test result.
+Relay the simplifier's report: what was applied by category, changes outside the branch
+diff called out separately, what was skipped and why, anything deferred to the final
+review, and the test result. Then state which step runs next and why (the `Cross-layer:`
+verdict).
 
 Keep it short. The next step is a review that reads the code itself.
